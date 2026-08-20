@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: 'Gofile folder code or full URL (e.g. fx7cdTzC or https://gofile.io/d/fx7cdTzC)'
+        description: 'Release tag (e.g. v1.0-ipa), direct URL, or Gofile folder code'
         required: true
         type: string
 
@@ -39,13 +39,23 @@ jobs:
           echo "=== Built files ==="
           find .theos/obj -name "*.dylib" -type f
 
-      - name: Download IPA from Gofile
+      - name: Download IPA
         run: |
-          FOLDER_CODE="${{ inputs.ipa_url }}"
-          if [[ "$FOLDER_CODE" == *gofile.io* ]]; then
-            FOLDER_CODE=$(echo "$FOLDER_CODE" | sed 's|.*/d/||' | sed 's|/.*||')
+          IPA_URL="${{ inputs.ipa_url }}"
+          if [[ "$IPA_URL" == *gofile.io* ]]; then
+            # Gofile: extract folder code and use Python downloader
+            FOLDER_CODE=$(echo "$IPA_URL" | sed 's|.*/d/||' | sed 's|/.*||')
+            python3 "$GITHUB_WORKSPACE/Tweak/download_gofile.py" "$FOLDER_CODE"
+          elif [[ "$IPA_URL" == http* ]]; then
+            # Direct URL
+            echo "Downloading IPA from: $IPA_URL"
+            curl -L -o Input.ipa "$IPA_URL" --connect-timeout 30 --max-time 600
+          else
+            # Try as GitHub release asset from this repo
+            echo "Trying GitHub release: $IPA_URL"
+            gh release download "$IPA_URL" --pattern "*.ipa" -D . 2>/dev/null \
+              || curl -L -o Input.ipa "https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/$IPA_URL/com.burbn.instagram_442.0.0_und3fined.ipa" --connect-timeout 30 --max-time 600
           fi
-          python3 "$GITHUB_WORKSPACE/Tweak/download_gofile.py" "$FOLDER_CODE"
           ls -lh Input.ipa
 
       - name: Inject & Package IPA

@@ -1,5 +1,8 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
+#import "IVContainer.h"
+#import "IVContainerManager.h"
+#import "IVLocationSpoofing.h"
 %hook CLLocationManager
 - (void)startUpdatingLocation {
     IVContainer *a=[IVContainerManager shared].active;
@@ -13,7 +16,7 @@
 }
 - (CLLocation *)location {
     IVLocationSpoofing *s=[IVLocationSpoofing shared];
-    if(s.active)return [s fake]; return %orig;
+    if(s.on)return [s fake]; return %orig;
 }
 - (void)requestLocation {
     IVContainer *a=[IVContainerManager shared].active;

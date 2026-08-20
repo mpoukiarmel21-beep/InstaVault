@@ -1,4 +1,6 @@
 #import <Foundation/Foundation.h>
+#import "IVContainer.h"
+#import "IVContainerManager.h"
 %hook NSUserDefaults
 - (instancetype)initWithSuiteName:(NSString *)s {
     IVContainer *a=[IVContainerManager shared].active;

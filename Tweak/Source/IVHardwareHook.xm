@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import "IVDeviceSpoofing.h"
 extern "C" CFTypeRef MGCopyAnswer(CFStringRef q);
 static CFTypeRef (*orig_MG)(CFStringRef);
 static CFTypeRef hook_MG(CFStringRef q) {

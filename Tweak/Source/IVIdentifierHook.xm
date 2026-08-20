@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <AdSupport/AdSupport.h>
+#import "IVContainer.h"
+#import "IVContainerManager.h"
 %hook ASIdentifierManager
 - (NSUUID *)advertisingIdentifier {
     IVContainer *a=[IVContainerManager shared].active;

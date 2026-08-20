@@ -1,6 +1,6 @@
 #import "IVThemeManager.h"
 @implementation IVThemeManager
-+ (instancetype)shared { static IVThemeManager *i; static dispatch_once_t o; dispatch_once(&o:^{ i=[self new]; }); return i; }
++ (instancetype)shared { static IVThemeManager *i; static dispatch_once_t o; dispatch_once(&o, ^{ i=[self new]; }); return i; }
 - (UIColor *)hex:(NSString *)hex {
     NSString *c=[hex stringByReplacingOccurrencesOfString:@"#" withString:@""];
     unsigned int v=0; [[NSScanner scannerWithString:c] scanHexInt:&v];

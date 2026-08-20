@@ -1,6 +1,6 @@
 #import "IVLocationSpoofing.h"
 @implementation IVLocationSpoofing
-+ (instancetype)shared { static IVLocationSpoofing *i; static dispatch_once_t o; dispatch_once(&o:^{ i=[self new]; }); return i; }
++ (instancetype)shared { static IVLocationSpoofing *i; static dispatch_once_t o; dispatch_once(&o, ^{ i=[self new]; }); return i; }
 - (void)enable:(CLLocationCoordinate2D)c { self.coord=c; self.on=YES; }
 - (void)disable { self.on=NO; self.coord=CLLocationCoordinate2DMake(0,0); }
 - (CLLocation *)fake {

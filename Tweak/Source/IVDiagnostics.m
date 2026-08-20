@@ -5,7 +5,7 @@ static IVDiagnostics *_inst; static NSUncaughtExceptionHandler *_prev;
 @property (nonatomic, strong) dispatch_queue_t q;
 @end
 @implementation IVDiagnostics
-+ (instancetype)shared { static dispatch_once_t o; dispatch_once(&o:^{ _inst=[self new]; }); return _inst; }
++ (instancetype)shared { static dispatch_once_t o; dispatch_once(&o, ^{ _inst=[self new]; }); return _inst; }
 - (instancetype)init { self=[super init]; if(self){_entries=[NSMutableArray new];_q=dispatch_queue_create("iv.diag",DISPATCH_QUEUE_SERIAL);} return self; }
 - (void)log:(NSString *)m level:(IVLogLevel)l {
     NSString *labels[]={@"DBG",@"INF",@"WRN",@"ERR",@"CRT"};

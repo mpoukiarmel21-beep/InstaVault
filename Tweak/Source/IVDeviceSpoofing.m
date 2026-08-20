@@ -1,7 +1,7 @@
 #import "IVDeviceSpoofing.h"
 #import "IVFakeDevice.h"
 @implementation IVDeviceSpoofing
-+ (instancetype)shared { static IVDeviceSpoofing *i; static dispatch_once_t o; dispatch_once(&o:^{ i=[self new]; }); return i; }
++ (instancetype)shared { static IVDeviceSpoofing *i; static dispatch_once_t o; dispatch_once(&o, ^{ i=[self new]; }); return i; }
 - (void)enable:(IVFakeDevice *)d { self.dev=d; self.on=YES; }
 - (void)disable { self.dev=nil; self.on=NO; }
 - (NSString *)udid { return self.on?self.dev.udid:nil; }

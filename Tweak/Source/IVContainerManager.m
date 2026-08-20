@@ -13,7 +13,7 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 @implementation IVContainerManager
 + (instancetype)shared {
     static IVContainerManager *i=nil; static dispatch_once_t o;
-    dispatch_once(&o:^{ i=[self new]; }); return i;
+    dispatch_once(&o, ^{ i=[self new]; }); return i;
 }
 - (instancetype)init { self=[super init]; if(self){_list=[NSMutableArray array];} return self; }
 

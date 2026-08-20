@@ -110,9 +110,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          REPO="${{ github.repository }}"
           TAG="build-${{ github.run_number }}"
-          gh release create "$TAG" --title "InstaVault Build ${{ github.run_number }}" --notes "Automated build from run ${{ github.run_number }}" 2>/dev/null || true
-          gh release upload "$TAG" InstaVault.ipa --clobber
+          gh release create "$TAG" --repo "$REPO" --title "InstaVault Build ${{ github.run_number }}" --notes "Automated build from run ${{ github.run_number }}" || true
+          gh release upload "$TAG" InstaVault.ipa --repo "$REPO" --clobber
           echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/$TAG/InstaVault.ipa" >> $GITHUB_ENV
 
       - name: Print Download URL

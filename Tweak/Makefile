@@ -11,7 +11,6 @@ InstaVault_FILES = Source/Tweak.xm \
 	Source/IVContainerManager.m \
 	Source/IVDeviceSpoofing.m \
 	Source/IVLocationSpoofing.m \
-	Source/IVStorageManager.m \
 	Source/IVDiagnostics.m \
 	Source/IVHardwareHook.xm \
 	Source/IVIdentifierHook.xm \

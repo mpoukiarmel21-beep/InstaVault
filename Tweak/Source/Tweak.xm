@@ -8,8 +8,9 @@
 #import "IVContainer.h"
 
 static IVFloatingButton *_btn = nil;
+static BOOL _observersRegistered = NO;
 
-static void IVAttachButton(void) {
+static UIWindow *IVKeyWindow(void) {
     UIWindow *kw = nil;
     if (@available(iOS 13.0, *)) {
         for (UIWindowScene *sc in [UIApplication sharedApplication].connectedScenes) {
@@ -22,31 +23,58 @@ static void IVAttachButton(void) {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (!kw) kw = [UIApplication sharedApplication].keyWindow;
 #pragma clang diagnostic pop
-    if (!kw) return;
-    if (_btn) return;
+    return kw;
+}
 
-    _btn = [[IVFloatingButton alloc] initWithFrame:CGRectMake(20, 100, 60, 60)];
-    [_btn attach:kw];
-    [_btn setCount:[IVContainerManager shared].list.count];
-    if ([IVContainerManager shared].active) [_btn setHex:[IVContainerManager shared].active.color];
+static void IVRegisterObservers(void) {
+    if (_observersRegistered) return;
+    _observersRegistered = YES;
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
 
-    [[NSNotificationCenter defaultCenter] addObserverForName:@"IVTap" object:nil
+    [nc addObserverForName:@"IVTap" object:nil
         queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+        UIWindow *kw = IVKeyWindow();
+        if (!kw) return;
         IVContainerListVC *vc = [IVContainerListVC new];
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
         nav.modalPresentationStyle = UIModalPresentationFormSheet;
         [kw.rootViewController presentViewController:nav animated:YES completion:nil];
     }];
-    [[NSNotificationCenter defaultCenter] addObserverForName:kIVActiveChanged object:nil
+    [nc addObserverForName:kIVActiveChanged object:nil
         queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
         IVContainer *a = [IVContainerManager shared].active;
         if (a) [_btn setHex:a.color];
         [_btn setCount:[IVContainerManager shared].list.count];
     }];
-    [[NSNotificationCenter defaultCenter] addObserverForName:kIVListChanged object:nil
+    [nc addObserverForName:kIVListChanged object:nil
         queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
         [_btn setCount:[IVContainerManager shared].list.count];
     }];
+    [nc addObserverForName:UIWindowDidBecomeKeyNotification object:nil
+        queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+        IVAttachButton();
+    }];
+    [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil
+        queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+        IVAttachButton();
+    }];
+}
+
+static void IVAttachButton(void) {
+    UIWindow *kw = IVKeyWindow();
+    if (!kw) return;
+
+    if (!_btn) {
+        _btn = [[IVFloatingButton alloc] initWithFrame:CGRectMake(20, 100, 60, 60)];
+        [_btn setCount:[IVContainerManager shared].list.count];
+        if ([IVContainerManager shared].active) [_btn setHex:[IVContainerManager shared].active.color];
+        IVRegisterObservers();
+    }
+
+    if (_btn.superview != kw) {
+        [_btn removeFromSuperview];
+        [_btn attach:kw];
+    }
 }
 
 static void IVTryAttach(int remaining) {

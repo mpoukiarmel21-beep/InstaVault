@@ -1,0 +1,11 @@
+.theos/
+obj/
+*.deb
+*.ipa
+*.dylib
+*.o
+*.log
+.DS_Store
+Thumbs.db
+packages/
+Input.ipa

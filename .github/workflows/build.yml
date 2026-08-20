@@ -32,7 +32,7 @@ jobs:
           cd Tweak
           make clean all
           echo "=== Built files ==="
-          ls -la obj/
+          find .theos/obj -name "*.dylib" -type f
 
       - name: Package
         run: |

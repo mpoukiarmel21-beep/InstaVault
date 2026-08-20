@@ -37,7 +37,8 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp Tweak/obj/*.dylib dist/
+          DYLIB=$(find Tweak/.theos/obj -name "*.dylib" -type f | head -1)
+          cp "$DYLIB" dist/InstaVault.dylib
           cp Scripts/build_ipa.sh dist/
           chmod +x dist/build_ipa.sh
           cd dist

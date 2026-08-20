@@ -24,9 +24,11 @@ jobs:
           fi
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           echo "$THEOS/bin" >> $GITHUB_PATH
+          brew install ldid 2>/dev/null || true
 
       - name: Build Dylib
         run: |
+          export PATH="$THEOS/bin:$PATH"
           cd Tweak
           make clean all
           echo "=== Built files ==="

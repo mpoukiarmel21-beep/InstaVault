@@ -1,9 +1,12 @@
-name: Build InstaVault
+name: Build InstaVault IPA
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: 'Direct download URL for Instagram IPA'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -24,7 +27,7 @@ jobs:
           fi
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           echo "$THEOS/bin" >> $GITHUB_PATH
-          brew install ldid 2>/dev/null || true
+          brew install ldid optool 2>/dev/null || true
 
       - name: Build Dylib
         run: |
@@ -34,19 +37,45 @@ jobs:
           echo "=== Built files ==="
           find .theos/obj -name "*.dylib" -type f
 
-      - name: Package
+      - name: Download IPA
         run: |
-          mkdir -p dist
-          DYLIB=$(find Tweak/.theos/obj -name "*.dylib" -type f | head -1)
-          cp "$DYLIB" dist/InstaVault.dylib
-          cp Scripts/build_ipa.sh dist/
-          chmod +x dist/build_ipa.sh
-          cd dist
-          zip -j ../InstaVault-dylib.zip *
+          curl -L -o Input.ipa "${{ inputs.ipa_url }}" --connect-timeout 30 --max-time 300
+          ls -lh Input.ipa
 
-      - name: Upload
+      - name: Inject & Package IPA
+        run: |
+          export PATH="$THEOS/bin:$PATH"
+          DYLIB=$(find Tweak/.theos/obj -name "*.dylib" -type f | head -1)
+          echo "Dylib: $DYLIB"
+          
+          WORKDIR=$(mktemp -d)
+          cd "$WORKDIR"
+          
+          echo "[1/5] Extracting IPA..."
+          unzip -q "$GITHUB_WORKSPACE/Input.ipa"
+          
+          APP=$(ls -d Payload/*.app | head -1)
+          echo "App: $APP"
+          
+          echo "[2/5] Copying dylib..."
+          mkdir -p "$APP/Frameworks"
+          cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
+          
+          echo "[3/5] Injecting load command..."
+          optool install -c load -p @executable_path/Frameworks/InstaVault.dylib -t "$APP/Instagram"
+          
+          echo "[4/5] Signing..."
+          ldid -S "$APP/Instagram"
+          
+          echo "[5/5] Creating IPA..."
+          zip -r -q "$GITHUB_WORKSPACE/InstaVault.ipa" Payload/
+          
+          echo "=== Done ==="
+          ls -lh "$GITHUB_WORKSPACE/InstaVault.ipa"
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: InstaVault-dylib
-          path: InstaVault-dylib.zip
+          name: InstaVault-IPA
+          path: InstaVault.ipa
           retention-days: 30

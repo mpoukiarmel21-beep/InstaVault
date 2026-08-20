@@ -27,7 +27,8 @@ jobs:
           fi
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           echo "$THEOS/bin" >> $GITHUB_PATH
-          brew install ldid optool 2>/dev/null || true
+          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+          brew install ldid optool
 
       - name: Build Dylib
         run: |

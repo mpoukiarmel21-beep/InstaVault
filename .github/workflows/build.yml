@@ -77,7 +77,10 @@ jobs:
           mkdir -p "$APP/Frameworks"
           cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
 
-          echo "[3/5] Injecting load command..."
+          echo "[3/5] Stripping existing code signature..."
+          ldid -S "$APP/Instagram"
+
+          echo "[4/5] Injecting load command..."
           if command -v insert_dylib &>/dev/null; then
             echo "Using insert_dylib..."
             insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$APP/Instagram"
@@ -86,7 +89,7 @@ jobs:
             python3 "$GITHUB_WORKSPACE/Tweak/inject_dylib.py" "$APP/Instagram" "@executable_path/Frameworks/InstaVault.dylib"
           fi
 
-          echo "[4/5] Signing..."
+          echo "[5/5] Re-signing..."
           ldid -S "$APP/Instagram"
 
           echo "[5/5] Creating IPA..."

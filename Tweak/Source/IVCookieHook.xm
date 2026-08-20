@@ -29,7 +29,8 @@ static NSUUID *hook_identifierForVendor(id self, SEL _cmd) {
     return orig_identifierForVendor(self, _cmd);
 }
 
-%ctor {
+__attribute__((constructor))
+static void initCookieHook() {
     Class cookieClass = [NSHTTPCookieStorage class];
     Method m1 = class_getClassMethod(cookieClass, @selector(sharedHTTPCookieStorage));
     orig_sharedHTTPCookieStorage = (origCookieFunc)method_getImplementation(m1);

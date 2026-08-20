@@ -28,6 +28,6 @@ InstaVault_FILES = Source/Tweak.xm \
 
 InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-error=unguarded-availability-new
 InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport
-InstaVault_LIBRARIES = substrate
+InstaVault_USE_SUBSTRATE = 0
 
 include $(THEOS_MAKE_PATH)/tweak.mk

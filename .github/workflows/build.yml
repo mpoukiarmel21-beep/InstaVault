@@ -41,34 +41,11 @@ jobs:
 
       - name: Download IPA from Gofile
         run: |
-          echo "Getting gofile guest token..."
-          GUEST_TOKEN=$(curl -s "https://api.gofile.io/guestToken" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['guestToken'])")
-          echo "Token: ${GUEST_TOKEN:0:8}..."
-
           FOLDER_CODE="${{ inputs.ipa_url }}"
           if [[ "$FOLDER_CODE" == *gofile.io* ]]; then
             FOLDER_CODE=$(echo "$FOLDER_CODE" | sed 's|.*/d/||' | sed 's|/.*||')
           fi
-          echo "Folder code: $FOLDER_CODE"
-
-          echo "Getting file info..."
-          CONTENT_INFO=$(curl -s "https://api.gofile.io/contents/$FOLDER_CODE" \
-            -H "Authorization: Bearer $GUEST_TOKEN")
-          echo "$CONTENT_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print('Status:', d.get('status')); print('Contents:', len(d.get('data',{}).get('contents',{})))"
-
-          DL_URL=$(echo "$CONTENT_INFO" | python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          contents = d['data']['contents']
-          for cid, c in contents.items():
-              if c['name'].endswith('.ipa') or c['mimetype'] == 'application/zip':
-                  print(c['link'])
-                  break
-          ")
-          echo "Download URL: $DL_URL"
-
-          echo "Downloading IPA (312MB, may take a few minutes)..."
-          curl -L -o Input.ipa "$DL_URL" --connect-timeout 30 --max-time 600
+          python3 "$GITHUB_WORKSPACE/Tweak/download_gofile.py" "$FOLDER_CODE"
           ls -lh Input.ipa
 
       - name: Inject & Package IPA

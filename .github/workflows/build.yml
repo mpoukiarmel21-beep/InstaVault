@@ -78,7 +78,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
 
           echo "[3/5] Stripping existing code signature..."
-          ldid -S "$APP/Instagram"
+          codesign --remove-signature "$APP/Instagram" 2>/dev/null || true
 
           echo "[4/5] Injecting load command..."
           if command -v insert_dylib &>/dev/null; then
@@ -89,10 +89,13 @@ jobs:
             python3 "$GITHUB_WORKSPACE/Tweak/inject_dylib.py" "$APP/Instagram" "@executable_path/Frameworks/InstaVault.dylib"
           fi
 
-          echo "[5/5] Re-signing..."
-          ldid -S "$APP/Instagram"
+          echo "[5/5] Re-signing ad-hoc..."
+          for fw in "$APP/Frameworks/"*.dylib; do
+            codesign --force --sign - "$fw"
+          done
+          codesign --force --sign - "$APP/Instagram"
 
-          echo "[5/5] Creating IPA..."
+          echo "[6/6] Creating IPA..."
           zip -r -q "$GITHUB_WORKSPACE/InstaVault.ipa" Payload/
 
           echo "=== Done ==="

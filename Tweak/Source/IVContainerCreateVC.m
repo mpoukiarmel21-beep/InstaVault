@@ -17,7 +17,6 @@
     self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(cancel)];
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithTitle:@"Create" style:UIBarButtonItemStyleDone target:self action:@selector(create)];
     self.tableView.backgroundColor=UIColor.systemBackgroundColor;
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"c"];
 }
 - (void)cancel { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)create {
@@ -30,9 +29,13 @@
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 2; }
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return s==0?1:2; }
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *c=[tv dequeueReusableCellWithIdentifier:@"c" forIndexPath:ip];
-    if(ip.section==0){if(!self.nameField){self.nameField=[[UITextField alloc] initWithFrame:CGRectMake(16,0,c.bounds.size.width-32,c.bounds.size.height)];self.nameField.placeholder=@"Container name";self.nameField.borderStyle=UITextBorderStyleNone;self.nameField.autocorrectionType=UITextAutocorrectionTypeNo;self.nameField.autoresizingMask=UIViewAutoresizingFlexibleWidth;[c addSubview:self.nameField];}c.textLabel.text=@"";}
-    else if(ip.row==0){c.textLabel.text=@"Location (GPS)";c.detailTextLabel.text=self.locName.length?self.locName:@"Not set";c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;}
+    if(ip.section==0){
+        UITableViewCell *c=[tv dequeueReusableCellWithIdentifier:@"c_name"];
+        if(!c)c=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"c_name"];
+        if(!self.nameField){self.nameField=[[UITextField alloc] initWithFrame:CGRectMake(16,0,c.bounds.size.width-32,c.bounds.size.height)];self.nameField.placeholder=@"Container name";self.nameField.borderStyle=UITextBorderStyleNone;self.nameField.autocorrectionType=UITextAutocorrectionTypeNo;self.nameField.autoresizingMask=UIViewAutoresizingFlexibleWidth;[c addSubview:self.nameField];}c.textLabel.text=@"";return c;
+    }
+    UITableViewCell *c=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"c"];
+    if(ip.row==0){c.textLabel.text=@"Location (GPS)";c.detailTextLabel.text=self.locName.length?self.locName:@"Not set";c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;}
     else{c.textLabel.text=@"Color";c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
     UIView *d=[[UIView alloc] initWithFrame:CGRectMake(c.bounds.size.width-48,8,28,28)];d.layer.cornerRadius=14;d.layer.masksToBounds=YES;d.tag=99;
     unsigned int v=0;NSScanner *sc=[NSScanner scannerWithString:self.color];[sc setCharactersToBeSkipped:[NSCharacterSet characterSetWithCharactersInString:@"#"]];[sc scanHexInt:&v];

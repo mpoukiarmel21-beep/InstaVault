@@ -14,7 +14,7 @@
     self.tableView.backgroundColor=UIColor.systemBackgroundColor;
     self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismiss)];
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(add)];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"c"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"c_empty"];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload) name:kIVListChanged object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload) name:kIVActiveChanged object:nil];
     [self reload];
@@ -29,12 +29,16 @@
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 1; }
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return self.items.count==0?1:self.items.count; }
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *c=[tv dequeueReusableCellWithIdentifier:@"c" forIndexPath:ip];
-    if(self.items.count==0){c.textLabel.text=@"Tap + to create a container";c.textLabel.textColor=UIColor.secondaryLabelColor;c.selectionStyle=UITableViewCellSelectionStyleNone;c.accessoryType=UITableViewCellAccessoryNone;}
-    else{IVContainer *ct=self.items[ip.row];c.textLabel.text=ct.name;c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
-    NSString *d=ct.locName.length?ct.locName:@"No location";if(ct.active)d=[d stringByAppendingString:@" • Active"];
+    if(self.items.count==0){
+        UITableViewCell *c=[tv dequeueReusableCellWithIdentifier:@"c_empty" forIndexPath:ip];
+        c.textLabel.text=@"Tap + to create a container";c.textLabel.textColor=UIColor.secondaryLabelColor;c.selectionStyle=UITableViewCellSelectionStyleNone;c.accessoryType=UITableViewCellAccessoryNone;
+        return c;
+    }
+    UITableViewCell *c=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"c"];
+    IVContainer *ct=self.items[ip.row];c.textLabel.text=ct.name;c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    NSString *d=ct.locName.length?ct.locName:@"No location";if(ct.active)d=[d stringByAppendingString:@" \u2022 Active"];
     c.detailTextLabel.text=d;c.detailTextLabel.textColor=UIColor.secondaryLabelColor;
-    c.accessoryType=ct.active?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryDisclosureIndicator;c.tintColor=UIColor.systemBlueColor;}
+    c.accessoryType=ct.active?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryDisclosureIndicator;c.tintColor=UIColor.systemBlueColor;
     return c;
 }
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s { return self.items.count?@"Containers":nil; }

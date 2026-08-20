@@ -1,8 +1,11 @@
 #import <Foundation/Foundation.h>
 #import <substrate.h>
+#import <dlfcn.h>
 #import "IVDeviceSpoofing.h"
-extern "C" CFTypeRef MGCopyAnswer(CFStringRef q);
-static CFTypeRef (*orig_MG)(CFStringRef);
+
+typedef CFTypeRef (*MGCopyAnswerFunc)(CFStringRef);
+static MGCopyAnswerFunc real_MG = NULL;
+
 static CFTypeRef hook_MG(CFStringRef q) {
     NSString *k=(__bridge NSString *)q;
     IVDeviceSpoofing *s=[IVDeviceSpoofing shared];
@@ -15,6 +18,16 @@ static CFTypeRef hook_MG(CFStringRef q) {
         if([k isEqualToString:@"UserAssignedDeviceName"]&&s.name)return(__bridge_retained CFTypeRef)[s.name copy];
         if([k isEqualToString:@"ProductVersion"]&&s.os)return(__bridge_retained CFTypeRef)[s.os copy];
     }
-    return orig_MG(q);
+    return real_MG(q);
 }
-%ctor { MSHookFunction((void*)MGCopyAnswer,(void*)hook_MG,(void**)&orig_MG); NSLog(@"[InstaVault] HW hook"); }
+
+%ctor {
+    void *handle = dlopen("/System/Library/PrivateFrameworks/MobileGestalt.framework/MobileGestalt", RTLD_LAZY);
+    if (handle) {
+        MGCopyAnswerFunc orig = (MGCopyAnswerFunc)dlsym(handle, "MGCopyAnswer");
+        if (orig) {
+            MSHookFunction((void*)orig, (void*)hook_MG, (void**)&real_MG);
+            NSLog(@"[InstaVault] HW hook installed");
+        }
+    }
+}

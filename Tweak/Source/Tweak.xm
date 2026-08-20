@@ -36,17 +36,6 @@ static void IVRegisterObservers(void) {
     _observersRegistered = YES;
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
 
-    [nc addObserverForName:@"IVTap" object:nil
-        queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
-        UIWindow *kw = IVKeyWindow();
-        UIViewController *top = kw.rootViewController;
-        if (!top) return;
-        while (top.presentedViewController) top = top.presentedViewController;
-        IVContainerListVC *vc = [IVContainerListVC new];
-        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
-        nav.modalPresentationStyle = UIModalPresentationFormSheet;
-        [top presentViewController:nav animated:YES completion:nil];
-    }];
     [nc addObserverForName:kIVActiveChanged object:nil
         queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
         IVContainer *a = [IVContainerManager shared].active;
@@ -73,6 +62,18 @@ static void IVAttachButton(void) {
 
     if (!_btn) {
         _btn = [[IVFloatingButton alloc] initWithFrame:CGRectMake(20, 100, 60, 60)];
+        __weak IVFloatingButton *wbtn = _btn;
+        _btn.onTap = ^{
+            IVFloatingButton *b = wbtn;
+            UIViewController *top = b.window.rootViewController;
+            if (!top) top = [UIApplication sharedApplication].keyWindow.rootViewController;
+            if (!top) return;
+            while (top.presentedViewController) top = top.presentedViewController;
+            IVContainerListVC *vc = [IVContainerListVC new];
+            UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+            nav.modalPresentationStyle = UIModalPresentationFullScreen;
+            [top presentViewController:nav animated:YES completion:nil];
+        };
         [_btn setCount:[IVContainerManager shared].list.count];
         if ([IVContainerManager shared].active) [_btn setHex:[IVContainerManager shared].active.color];
         IVRegisterObservers();
@@ -84,6 +85,7 @@ static void IVAttachButton(void) {
         [_btn removeFromSuperview];
         [_btn attachToView:host];
     }
+    [host bringSubviewToFront:_btn];
 }
 
 static void IVTryAttach(int remaining) {

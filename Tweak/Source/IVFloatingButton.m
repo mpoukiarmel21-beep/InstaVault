@@ -35,7 +35,7 @@
         [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.7 initialSpringVelocity:0.5 options:0 animations:^{self.center=CGPointMake(x,y);} completion:nil];
     }
 }
-- (void)tap { if(!self.drag)[[NSNotificationCenter defaultCenter] postNotificationName:@"IVTap" object:nil]; }
+- (void)tap { if(!self.drag){ if(self.onTap) self.onTap(); else [[NSNotificationCenter defaultCenter] postNotificationName:@"IVTap" object:nil]; } }
 - (void)setCount:(NSInteger)c { self.badge.text=[NSString stringWithFormat:@"%ld",(long)c]; self.badge.hidden=c<=0; }
 - (void)setHex:(NSString *)hex {
     unsigned int v=0; NSScanner *sc=[NSScanner scannerWithString:hex];

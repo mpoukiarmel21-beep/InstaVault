@@ -16,10 +16,8 @@ InstaVault_FILES = Source/Tweak.xm \
 	Source/IVHardwareHook.xm \
 	Source/IVIdentifierHook.xm \
 	Source/IVKeychainHook.xm \
-	Source/IVUserDefaultsHook.xm \
 	Source/IVCookieHook.xm \
 	Source/IVLocationHook.xm \
-	Source/IVAntiDetectHook.xm \
 	Source/IVFloatingButton.m \
 	Source/IVContainerListVC.m \
 	Source/IVContainerCreateVC.m \

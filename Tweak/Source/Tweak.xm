@@ -8,39 +8,27 @@
 #import "IVContainer.h"
 
 static IVFloatingButton *_btn = nil;
-static UIWindow *_overlay = nil;
 static BOOL _observersRegistered = NO;
 
 static void IVAttachButton(void);
-
-static void IVEnsureOverlay(void) {
-    if (_overlay) return;
-    _overlay = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    _overlay.windowLevel = 1000.0;
-    _overlay.backgroundColor = [UIColor clearColor];
-    _overlay.hidden = NO;
-    if (@available(iOS 13.0, *)) {
-        id scene = [[[UIApplication sharedApplication] connectedScenes] anyObject];
-        if ([scene isKindOfClass:[UIWindowScene class]]) {
-            _overlay.windowScene = (UIWindowScene *)scene;
-        }
-    }
-}
 
 static UIWindow *IVKeyWindow(void) {
     UIWindow *kw = nil;
     if (@available(iOS 13.0, *)) {
         for (UIWindowScene *sc in [UIApplication sharedApplication].connectedScenes) {
             if (sc.activationState == UISceneActivationStateForegroundActive) {
-                for (UIWindow *w in sc.windows) { if (w.isKeyWindow) { kw = w; break; } }
+                for (UIWindow *w in sc.windows) { if (w.isKeyWindow) return w; }
             }
         }
     }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    if (!kw) kw = [UIApplication sharedApplication].keyWindow;
+    if ([UIApplication sharedApplication].keyWindow) return [UIApplication sharedApplication].keyWindow;
 #pragma clang diagnostic pop
-    return kw;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (!w.hidden && w.windowLevel == 0) return w;
+    }
+    return nil;
 }
 
 static void IVRegisterObservers(void) {
@@ -51,11 +39,13 @@ static void IVRegisterObservers(void) {
     [nc addObserverForName:@"IVTap" object:nil
         queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
         UIWindow *kw = IVKeyWindow();
-        if (!kw) return;
+        UIViewController *top = kw.rootViewController;
+        if (!top) return;
+        while (top.presentedViewController) top = top.presentedViewController;
         IVContainerListVC *vc = [IVContainerListVC new];
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
         nav.modalPresentationStyle = UIModalPresentationFormSheet;
-        [kw.rootViewController presentViewController:nav animated:YES completion:nil];
+        [top presentViewController:nav animated:YES completion:nil];
     }];
     [nc addObserverForName:kIVActiveChanged object:nil
         queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
@@ -78,7 +68,8 @@ static void IVRegisterObservers(void) {
 }
 
 static void IVAttachButton(void) {
-    IVEnsureOverlay();
+    UIWindow *kw = IVKeyWindow();
+    if (!kw || !kw.rootViewController) return;
 
     if (!_btn) {
         _btn = [[IVFloatingButton alloc] initWithFrame:CGRectMake(20, 100, 60, 60)];
@@ -87,9 +78,11 @@ static void IVAttachButton(void) {
         IVRegisterObservers();
     }
 
-    if (_btn.superview != _overlay) {
+    UIView *host = kw.rootViewController.view;
+    if (!host) return;
+    if (_btn.superview != host || !_btn.window) {
         [_btn removeFromSuperview];
-        [_btn attach:_overlay];
+        [_btn attachToView:host];
     }
 }
 
@@ -97,7 +90,7 @@ static void IVTryAttach(int remaining) {
     if (remaining <= 0) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         IVAttachButton();
-        if (!_btn) IVTryAttach(remaining - 1);
+        if (!_btn || !_btn.window) IVTryAttach(remaining - 1);
     });
 }
 
@@ -118,7 +111,10 @@ static void IVInit() {
             [[IVDiagnostics shared] info:[NSString stringWithFormat:@"Restored: %@", m.active.name]];
         }
         dispatch_async(dispatch_get_main_queue(), ^{
-            IVTryAttach(20);
+            IVTryAttach(40);
+            [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(NSTimer *t) {
+                IVAttachButton();
+            }];
         });
     }
 }

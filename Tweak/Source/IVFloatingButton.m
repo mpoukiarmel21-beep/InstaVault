@@ -42,5 +42,5 @@
     [sc setCharactersToBeSkipped:[NSCharacterSet characterSetWithCharactersInString:@"#"]]; [sc scanHexInt:&v];
     self.backgroundColor=[UIColor colorWithRed:((v>>16)&0xFF)/255.0 green:((v>>8)&0xFF)/255.0 blue:(v&0xFF)/255.0 alpha:1];
 }
-- (void)attach:(UIWindow *)w { self.alpha=0; self.hidden=NO; [w addSubview:self]; [UIView animateWithDuration:0.4 animations:^{self.alpha=1;}]; }
+- (void)attachToView:(UIView *)v { self.alpha=0; self.hidden=NO; [v addSubview:self]; [UIView animateWithDuration:0.4 animations:^{self.alpha=1;}]; }
 @end

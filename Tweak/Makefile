@@ -1,5 +1,6 @@
 INSTALL_TARGET_PROCESSES = Instagram
 ARCHS = arm64
+TARGET = iphone:clang:latest:13.0
 
 include $(THEOS)/makefiles/common.mk
 
@@ -25,7 +26,7 @@ InstaVault_FILES = Source/Tweak.xm \
 	Source/IVMapPickerVC.m \
 	Source/IVThemeManager.m
 
-InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable
+InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-error=unguarded-availability-new
 InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport
 InstaVault_PRIVATE_FRAMEWORKS = MobileGestalt
 InstaVault_LIBRARIES = substrate

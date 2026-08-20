@@ -9,7 +9,10 @@
     self.layer.cornerRadius=f.size.width/2; self.layer.masksToBounds=YES;
     self.layer.shadowColor=UIColor.blackColor.CGColor; self.layer.shadowOffset=CGSizeMake(0,3);
     self.layer.shadowOpacity=0.4; self.layer.shadowRadius=6;
-    UIImage *ic=[UIImage systemImageNamed:@"square.stack.3d.up.fill"];
+    UIImage *ic=nil;
+    if(@available(iOS 13.0,*)){ic=[UIImage systemImageNamed:@"square.stack.3d.up.fill"];}
+    if(!ic){ic=[UIImage imageNamed:@"square.stack.3d.up.fill"];}
+    if(!ic){ic=[UIImage imageWithCIImage:[CIImage imageWithColor:[CIColor colorWithRed:1 green:1 blue:1]]];}
     if(ic){[self setImage:ic forState:UIControlStateNormal];self.tintColor=UIColor.whiteColor;}
     UIPanGestureRecognizer *p=[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
     [self addGestureRecognizer:p];

@@ -9,7 +9,7 @@ static void (*orig_startUpdatingLocation)(id, SEL) = NULL;
 static CLLocation *(*orig_location)(id, SEL) = NULL;
 static void (*orig_requestLocation)(id, SEL) = NULL;
 
-static void IVFeedDelegate(id self) {
+static void IVFeedDelegate(CLLocationManager *self) {
     IVContainer *a = [IVContainerManager shared].active;
     if (!a || ![a hasLocation]) return;
     IVLocationSpoofing *s = [IVLocationSpoofing shared];

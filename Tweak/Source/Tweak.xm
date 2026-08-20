@@ -10,6 +10,8 @@
 static IVFloatingButton *_btn = nil;
 static BOOL _observersRegistered = NO;
 
+static void IVAttachButton(void);
+
 static UIWindow *IVKeyWindow(void) {
     UIWindow *kw = nil;
     if (@available(iOS 13.0, *)) {

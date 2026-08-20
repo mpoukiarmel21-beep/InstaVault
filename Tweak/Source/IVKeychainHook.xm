@@ -35,9 +35,9 @@ static OSStatus hook_Delete(CFDictionaryRef q) {
 }
 
 %ctor {
-    MSHookFunction(SecItemAdd, (void *)hook_Add, (void **)&orig_Add);
-    MSHookFunction(SecItemCopyMatching, (void *)hook_CopyMatch, (void **)&orig_CopyMatch);
-    MSHookFunction(SecItemUpdate, (void *)hook_Update, (void **)&orig_Update);
-    MSHookFunction(SecItemDelete, (void *)hook_Delete, (void **)&orig_Delete);
+    MSHookFunction((void*)SecItemAdd, (void *)hook_Add, (void **)&orig_Add);
+    MSHookFunction((void*)SecItemCopyMatching, (void *)hook_CopyMatch, (void **)&orig_CopyMatch);
+    MSHookFunction((void*)SecItemUpdate, (void *)hook_Update, (void **)&orig_Update);
+    MSHookFunction((void*)SecItemDelete, (void *)hook_Delete, (void **)&orig_Delete);
     NSLog(@"[InstaVault] Keychain hook installed");
 }

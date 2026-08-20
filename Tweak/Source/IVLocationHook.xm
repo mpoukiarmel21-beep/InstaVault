@@ -2,6 +2,7 @@
 #import <CoreLocation/CoreLocation.h>
 #import "IVContainer.h"
 #import "IVContainerManager.h"
+#import "IVFakeDevice.h"
 #import "IVLocationSpoofing.h"
 %hook CLLocationManager
 - (void)startUpdatingLocation {

@@ -2,6 +2,7 @@
 #import <AdSupport/AdSupport.h>
 #import "IVContainer.h"
 #import "IVContainerManager.h"
+#import "IVFakeDevice.h"
 %hook ASIdentifierManager
 - (NSUUID *)advertisingIdentifier {
     IVContainer *a=[IVContainerManager shared].active;

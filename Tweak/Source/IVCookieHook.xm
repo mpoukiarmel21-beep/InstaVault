@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import "IVContainer.h"
 #import "IVContainerManager.h"
+#import "IVFakeDevice.h"
 %hook NSHTTPCookieStorage
 + (NSHTTPCookieStorage *)sharedHTTPCookieStorage {
     IVContainer *a=[IVContainerManager shared].active;

@@ -8,9 +8,24 @@
 #import "IVContainer.h"
 
 static IVFloatingButton *_btn = nil;
+static UIWindow *_overlay = nil;
 static BOOL _observersRegistered = NO;
 
 static void IVAttachButton(void);
+
+static void IVEnsureOverlay(void) {
+    if (_overlay) return;
+    _overlay = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    _overlay.windowLevel = 1000.0;
+    _overlay.backgroundColor = [UIColor clearColor];
+    _overlay.hidden = NO;
+    if (@available(iOS 13.0, *)) {
+        id scene = [[[UIApplication sharedApplication] connectedScenes] anyObject];
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            _overlay.windowScene = (UIWindowScene *)scene;
+        }
+    }
+}
 
 static UIWindow *IVKeyWindow(void) {
     UIWindow *kw = nil;
@@ -63,8 +78,7 @@ static void IVRegisterObservers(void) {
 }
 
 static void IVAttachButton(void) {
-    UIWindow *kw = IVKeyWindow();
-    if (!kw) return;
+    IVEnsureOverlay();
 
     if (!_btn) {
         _btn = [[IVFloatingButton alloc] initWithFrame:CGRectMake(20, 100, 60, 60)];
@@ -73,9 +87,9 @@ static void IVAttachButton(void) {
         IVRegisterObservers();
     }
 
-    if (_btn.superview != kw) {
+    if (_btn.superview != _overlay) {
         [_btn removeFromSuperview];
-        [_btn attach:kw];
+        [_btn attach:_overlay];
     }
 }
 

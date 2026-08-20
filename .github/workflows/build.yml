@@ -29,7 +29,14 @@ jobs:
           echo "$THEOS/bin" >> $GITHUB_PATH
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
           brew install ldid
-          brew install insert-dylib 2>/dev/null || true
+          # Build insert-dylib from source
+          if ! command -v insert_dylib &>/dev/null; then
+            git clone https://github.com/tyilo/insert_dylib.git /tmp/insert_dylib
+            cd /tmp/insert_dylib
+            xcodebuild -quiet
+            cp build/Release/insert_dylib /usr/local/bin/
+            chmod +x /usr/local/bin/insert_dylib
+          fi
 
       - name: Build Dylib
         run: |
@@ -78,13 +85,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
 
           echo "[3/5] Injecting load command..."
-          if command -v insert_dylib &>/dev/null; then
-            echo "Using insert_dylib..."
-            insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$APP/Instagram"
-          else
-            echo "Using Python fallback..."
-            python3 "$GITHUB_WORKSPACE/Tweak/inject_dylib.py" "$APP/Instagram" "@executable_path/Frameworks/InstaVault.dylib"
-          fi
+          insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$APP/Instagram"
 
           echo "[4/5] Re-signing ad-hoc..."
           for fw in "$APP/Frameworks/"*.dylib; do

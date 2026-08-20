@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <substrate.h>
 static NSArray *sPaths(){return @[@"/Applications/Cydia.app",@"/Library/MobileSubstrate/MobileSubstrate.dylib",@"/Library/MobileSubstrate/DynamicLibraries",@"/bin/bash",@"/bin/sh",@"/usr/sbin/sshd",@"/usr/bin/ssh",@"/usr/bin/cycript",@"/usr/local/bin/cycript",@"/usr/libexec/cydia",@"/usr/lib/libcycript.dylib",@"/usr/lib/tweak-inject",@"/usr/lib/substrate",@"/usr/sbin/dpkg",@"/usr/bin/dpkg",@"/private/etc/apt",@"/private/var/lib/cydia",@"/private/var/stash",@"/var/cache/apt",@"/var/lib/cydia",@"/var/lib/dpkg",@"/etc/apt"];}
 static NSArray *sSchemes(){return @[@"cydia://",@"sileo://",@"zbra://",@"filza://",@"activator://"];}
 %hook NSFileManager

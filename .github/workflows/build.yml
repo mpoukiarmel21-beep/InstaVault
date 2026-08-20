@@ -1,12 +1,9 @@
-name: Build InstaVault IPA
+name: Build InstaVault
 
 on:
+  push:
+    branches: [main, master]
   workflow_dispatch:
-    inputs:
-      ipa_url:
-        description: 'URL of the Instagram IPA (or leave empty to use latest release asset)'
-        required: false
-        type: string
 
 jobs:
   build:
@@ -15,83 +12,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          brew install ldid libtool automake
-
       - name: Setup Theos
         run: |
           export THEOS=~/theos
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          curl -LO https://github.com/theos/sdks/archive/master.tar.gz
-          tar -xzf master.tar.gz -C $THEOS/sdks/ --strip-components=1
+          if [ ! -d "$THEOS" ]; then
+            git clone --recursive https://github.com/theos/theos.git $THEOS
+          fi
+          if [ ! -d "$THEOS/sdks/master" ]; then
+            curl -LO https://github.com/theos/sdks/archive/master.tar.gz
+            tar -xzf master.tar.gz -C $THEOS/sdks/ --strip-components=1
+          fi
           echo "THEOS=$THEOS" >> $GITHUB_ENV
 
-      - name: Install optool
-        run: |
-          cd /tmp
-          git clone https://github.com/alexzielenski/optool.git
-          cd optool
-          xcodebuild -project optool.xcodeproj -configuration Release SYMROOT=build
-          sudo cp build/Release/optool /usr/local/bin/
-
-      - name: Build Tweak
+      - name: Build Dylib
         run: |
           cd Tweak
           make clean all
-          ls -la obj/*.dylib
+          echo "=== Built files ==="
+          ls -la obj/
 
-      - name: Download Instagram IPA
+      - name: Package
         run: |
-          mkdir -p build
-          if [ -n "${{ github.event.inputs.ipa_url }}" ]; then
-            curl -L -o build/Input.ipa "${{ github.event.inputs.ipa_url }}"
-          elif [ -f "Input.ipa" ]; then
-            cp Input.ipa build/Input.ipa
-          else
-            echo "ERROR: No IPA provided. Upload your Instagram IPA to a GitHub Release"
-            echo "and trigger this workflow with the IPA URL, or place Input.ipa in the repo root."
-            exit 1
-          fi
-          ls -lh build/Input.ipa
+          mkdir -p dist
+          cp Tweak/obj/*.dylib dist/
+          cp Scripts/build_ipa.sh dist/
+          chmod +x dist/build_ipa.sh
+          cd dist
+          zip -j ../InstaVault-dylib.zip *
 
-      - name: Extract IPA
-        run: |
-          cd build
-          unzip -q Input.ipa
-          APP_PATH=$(find Payload -name "*.app" -maxdepth 1 | head -1)
-          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
-          echo "Found app at: $APP_PATH"
-
-      - name: Inject Dylib
-        run: |
-          DYLIB=$(find Tweak/obj -name "*.dylib" | head -1)
-          echo "Injecting: $DYLIB"
-          
-          mkdir -p "$APP_PATH/Frameworks"
-          cp "$DYLIB" "$APP_PATH/Frameworks/InstaVault.dylib"
-          
-          optool install -c load -p @executable_path/Frameworks/InstaVault.dylib -t "$APP_PATH/Instagram"
-
-      - name: Sign
-        run: |
-          ENT="Entitlements/instagram.entitlements"
-          if [ -f "$ENT" ]; then
-            ldid -S"$ENT" "$APP_PATH/Instagram"
-            echo "Signed with entitlements"
-          else
-            ldid -S "$APP_PATH/Instagram"
-            echo "Ad-hoc signed"
-          fi
-
-      - name: Package IPA
-        run: |
-          cd build
-          zip -r -q ../InstaVault.ipa Payload/
-
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: InstaVault-${{ github.run_number }}
-          path: InstaVault.ipa
+          name: InstaVault-dylib
+          path: InstaVault-dylib.zip
           retention-days: 30

@@ -23,6 +23,7 @@ jobs:
             tar -xzf master.tar.gz -C $THEOS/sdks/ --strip-components=1
           fi
           echo "THEOS=$THEOS" >> $GITHUB_ENV
+          echo "$THEOS/bin" >> $GITHUB_PATH
 
       - name: Build Dylib
         run: |

@@ -8,7 +8,7 @@ static IVDiagnostics *_inst; static NSUncaughtExceptionHandler *_prev;
 + (instancetype)shared { static dispatch_once_t o; dispatch_once(&o, ^{ _inst=[self new]; }); return _inst; }
 - (instancetype)init { self=[super init]; if(self){_entries=[NSMutableArray new];_q=dispatch_queue_create("iv.diag",DISPATCH_QUEUE_SERIAL);} return self; }
 - (void)log:(NSString *)m level:(IVLogLevel)l {
-    NSString *labels[]={@"DBG",@"INF",@"WRN",@"ERR",@"CRT"};
+    static NSArray *labels; static dispatch_once_t lo; dispatch_once(&lo, ^{ labels=@[@"DBG",@"INF",@"WRN",@"ERR",@"CRT"]; });
     NSDateFormatter *f=[NSDateFormatter new]; f.dateFormat=@"HH:mm:ss.SSS";
     NSString *ts=[f stringFromDate:[NSDate date]];
     dispatch_async(self.q, ^{

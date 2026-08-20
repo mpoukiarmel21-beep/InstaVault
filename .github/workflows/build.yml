@@ -29,23 +29,7 @@ jobs:
           echo "$THEOS/bin" >> $GITHUB_PATH
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
           brew install ldid
-          # Try installing optool; if unavailable, install insert_dylib as fallback
-          brew install optool 2>/dev/null || brew install insert-dylib 2>/dev/null || true
-          # Also try installing optool from source
-          if ! command -v optool &>/dev/null && ! command -v insert_dylib &>/dev/null; then
-            echo "Installing optool from source..."
-            cd /tmp
-            git clone https://github.com/HashScout/optool.git
-            cd optool
-            xcodebuild -configuration Release SYMROOT=build 2>&1 | tail -5
-            if [ -f build/Release/optool ]; then
-              cp build/Release/optool /usr/local/bin/optool
-              chmod +x /usr/local/bin/optool
-            fi
-          fi
-          echo "Tools available:"
-          which optool 2>/dev/null || echo "optool: not found"
-          which insert_dylib 2>/dev/null || echo "insert_dylib: not found"
+          brew install insert-dylib 2>/dev/null || true
 
       - name: Build Dylib
         run: |
@@ -60,20 +44,18 @@ jobs:
           echo "Getting gofile guest token..."
           GUEST_TOKEN=$(curl -s "https://api.gofile.io/guestToken" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['guestToken'])")
           echo "Token: ${GUEST_TOKEN:0:8}..."
-          
+
           FOLDER_CODE="${{ inputs.ipa_url }}"
-          # Extract folder code from full URL if needed
           if [[ "$FOLDER_CODE" == *gofile.io* ]]; then
             FOLDER_CODE=$(echo "$FOLDER_CODE" | sed 's|.*/d/||' | sed 's|/.*||')
           fi
           echo "Folder code: $FOLDER_CODE"
-          
+
           echo "Getting file info..."
           CONTENT_INFO=$(curl -s "https://api.gofile.io/contents/$FOLDER_CODE" \
             -H "Authorization: Bearer $GUEST_TOKEN")
           echo "$CONTENT_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print('Status:', d.get('status')); print('Contents:', len(d.get('data',{}).get('contents',{})))"
-          
-          # Extract download link - find the IPA file
+
           DL_URL=$(echo "$CONTENT_INFO" | python3 -c "
           import sys, json
           d = json.load(sys.stdin)
@@ -84,8 +66,8 @@ jobs:
                   break
           ")
           echo "Download URL: $DL_URL"
-          
-          echo "Downloading IPA..."
+
+          echo "Downloading IPA (312MB, may take a few minutes)..."
           curl -L -o Input.ipa "$DL_URL" --connect-timeout 30 --max-time 600
           ls -lh Input.ipa
 
@@ -94,90 +76,35 @@ jobs:
           export PATH="$THEOS/bin:$PATH"
           DYLIB=$(find Tweak/.theos/obj -name "*.dylib" -type f | head -1)
           echo "Dylib: $DYLIB"
-          
+
           WORKDIR=$(mktemp -d)
           cd "$WORKDIR"
-          
+
           echo "[1/5] Extracting IPA..."
           unzip -q "$GITHUB_WORKSPACE/Input.ipa"
-          
+
           APP=$(ls -d Payload/*.app | head -1)
           echo "App: $APP"
-          
+
           echo "[2/5] Copying dylib..."
           mkdir -p "$APP/Frameworks"
           cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
-          
+
           echo "[3/5] Injecting load command..."
-          if command -v optool &>/dev/null; then
-            echo "Using optool..."
-            optool install -c load -p @executable_path/Frameworks/InstaVault.dylib -t "$APP/Instagram"
-          elif command -v insert_dylib &>/dev/null; then
+          if command -v insert_dylib &>/dev/null; then
             echo "Using insert_dylib..."
             insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$APP/Instagram"
           else
-            echo "Neither optool nor insert_dylib found, using install_name_tool + python fallback..."
-            # Use install_name_tool to add LC_LOAD_DYLIB
-            python3 -c "
-import struct, sys
+            echo "Using Python fallback..."
+            python3 "$GITHUB_WORKSPACE/Tweak/inject_dylib.py" "$APP/Instagram" "@executable_path/Frameworks/InstaVault.dylib"
+          fi
 
-binary = '$APP/Instagram'
-dylib_path = b'@executable_path/Frameworks/InstaVault.dylib\x00'
-
-with open(binary, 'rb') as f:
-    data = bytearray(f.read())
-
-# Find __TEXT segment to locate Mach-O header
-# Mach-O arm64: magic=0xfeedfacf, cputype=0x100000C, cpusubtype=0
-magic = struct.unpack('<I', data[0:4])[0]
-if magic != 0xfeedfacf:
-    print(f'Unexpected magic: {hex(magic)}')
-    sys.exit(1)
-
-ncmds = struct.unpack('<I', data[16:20])[0]
-sizeofcmds = struct.unpack('<I', data[20:24])[0]
-
-# Find end of load commands
-lc_offset = 32  # Mach-O 64 header size
-
-# Find LC_CODE_SIGNATURE
-cs_cmd_offset = None
-for i in range(ncmds):
-    cmd = struct.unpack('<I', data[lc_offset:lc_offset+4])[0]
-    cmdsize = struct.unpack('<I', data[lc_offset+4:lc_offset+8])[0]
-    if cmd == 0x1d:  # LC_CODE_SIGNATURE
-        cs_cmd_offset = lc_offset
-    lc_offset += cmdsize
-
-if cs_cmd_offset is None:
-    print('LC_CODE_SIGNATURE not found')
-    sys.exit(1)
-
-# Create LC_LOAD_DYLIB command (12 = cmd, 24 = fixed size + path)
-path_bytes = dylib_path
-path_padded = path_bytes + b'\x00' * (8 - len(path_bytes) % 8) if len(path_bytes) % 8 != 0 else path_bytes
-lc_load_dylib = struct.pack('<II', 12, 24 + len(path_padded)) + path_padded
-
-# Insert before LC_CODE_SIGNATURE
-new_data = data[:cs_cmd_offset] + lc_load_dylib + data[cs_cmd_offset:]
-
-# Update sizeofcmds in header
-new_sizeofcmds = sizeofcmds + len(lc_load_dylib)
-new_ncmds = ncmds + 1
-new_data[16:20] = struct.pack('<I', new_ncmds)
-new_data[20:24] = struct.pack('<I', new_sizeofcmds)
-
-with open(binary, 'wb') as f:
-    f.write(new_data)
-print('Dylib injected via Python fallback')
-"
-          
           echo "[4/5] Signing..."
           ldid -S "$APP/Instagram"
-          
+
           echo "[5/5] Creating IPA..."
           zip -r -q "$GITHUB_WORKSPACE/InstaVault.ipa" Payload/
-          
+
           echo "=== Done ==="
           ls -lh "$GITHUB_WORKSPACE/InstaVault.ipa"
 

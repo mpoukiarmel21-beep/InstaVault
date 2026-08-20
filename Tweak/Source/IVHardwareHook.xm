@@ -1,33 +1,7 @@
 #import <Foundation/Foundation.h>
-#import <substrate.h>
-#import <dlfcn.h>
 #import "IVDeviceSpoofing.h"
 
-typedef CFTypeRef (*MGCopyAnswerFunc)(CFStringRef);
-static MGCopyAnswerFunc real_MG = NULL;
-
-static CFTypeRef hook_MG(CFStringRef q) {
-    NSString *k=(__bridge NSString *)q;
-    IVDeviceSpoofing *s=[IVDeviceSpoofing shared];
-    if(s.on){
-        if([k isEqualToString:@"UniqueDeviceID"]&&s.udid)return(__bridge_retained CFTypeRef)[s.udid copy];
-        if([k isEqualToString:@"SerialNumber"]&&s.serial)return(__bridge_retained CFTypeRef)[s.serial copy];
-        if([k isEqualToString:@"WiFiAddress"]&&s.wifi)return(__bridge_retained CFTypeRef)[s.wifi copy];
-        if([k isEqualToString:@"BluetoothAddress"]&&s.bt)return(__bridge_retained CFTypeRef)[s.bt copy];
-        if([k isEqualToString:@"ProductType"]&&s.model)return(__bridge_retained CFTypeRef)[s.model copy];
-        if([k isEqualToString:@"UserAssignedDeviceName"]&&s.name)return(__bridge_retained CFTypeRef)[s.name copy];
-        if([k isEqualToString:@"ProductVersion"]&&s.os)return(__bridge_retained CFTypeRef)[s.os copy];
-    }
-    return real_MG(q);
-}
-
-%ctor {
-    void *handle = dlopen("/System/Library/PrivateFrameworks/MobileGestalt.framework/MobileGestalt", RTLD_LAZY);
-    if (handle) {
-        MGCopyAnswerFunc orig = (MGCopyAnswerFunc)dlsym(handle, "MGCopyAnswer");
-        if (orig) {
-            MSHookFunction((void*)orig, (void*)hook_MG, (void**)&real_MG);
-            NSLog(@"[InstaVault] HW hook installed");
-        }
-    }
+__attribute__((constructor))
+static void initHardwareHook() {
+    NSLog(@"[InstaVault] HW hook disabled (MGCopyAnswer hook removed for stability)");
 }

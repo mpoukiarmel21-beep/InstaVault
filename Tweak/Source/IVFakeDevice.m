@@ -68,7 +68,7 @@ static NSArray *kVersions() {
     [c encodeObject:_model forKey:@"m"];[c encodeObject:_deviceName forKey:@"n"];
     [c encodeObject:_osVersion forKey:@"o"];
 }
-- (NSDictionary *)toDictionary {
+- (NSDictionary *)toDict {
     return @{@"u":_udid,@"v":_idfv,@"a":_idfa,@"s":_serialNumber,
              @"w":_wifiMac,@"b":_btMac,@"m":_model,@"n":_deviceName,@"o":_osVersion};
 }

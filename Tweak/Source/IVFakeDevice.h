@@ -11,6 +11,6 @@
 @property (nonatomic, copy, readonly) NSString *deviceName;
 @property (nonatomic, copy, readonly) NSString *osVersion;
 + (instancetype)generate;
-- (NSDictionary *)toDictionary;
+- (NSDictionary *)toDict;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end

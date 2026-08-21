@@ -2,6 +2,7 @@
 #import "IVContainerCreateVC.h"
 #import "IVContainerManager.h"
 #import "IVContainer.h"
+#import "IVFakeDevice.h"
 #import "IVFloatingButton.h"
 #import "IVThemeManager.h"
 #import <UIKit/UIKit.h>
@@ -33,7 +34,7 @@
     _table.dataSource = self;
     _table.backgroundColor = [UIColor clearColor];
     _table.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    _table.registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
+    [_table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
     [self.view addSubview:_table];
 
     // Empty state
@@ -167,7 +168,7 @@
 
     // Color indicator
     UIView *colorDot = [UIView new];
-    colorDot.backgroundColor = [IVThemeManager shared].hex(c.color);
+    colorDot.backgroundColor = [[IVThemeManager shared] hex:c.color];
     colorDot.layer.cornerRadius = 6;
     colorDot.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:colorDot];

@@ -68,11 +68,12 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 }
 
 - (IVContainer *)create:(NSString *)name {
+    IVContainer *c;
     [_lock lock];
-    IVContainer *c = [IVContainer withName:name];
+    c = [IVContainer withName:name];
     [_list addObject:c];
-    [self save];
     [_lock unlock];
+    [self save];
     [[NSNotificationCenter defaultCenter] postNotificationName:kIVListChanged object:nil];
     return c;
 }
@@ -82,8 +83,8 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     BOOL wasActive = (c == _active);
     [_list removeObject:c];
     if (wasActive) _active = _list.firstObject;
-    [self save];
     [_lock unlock];
+    [self save];
     [[NSNotificationCenter defaultCenter] postNotificationName:kIVListChanged object:nil];
     [[NSNotificationCenter defaultCenter] postNotificationName:kIVActiveChanged object:nil];
 }
@@ -93,8 +94,8 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     for (IVContainer *x in _list) x.active = (x == c);
     _active = c;
     if (c) c.lastUsed = [NSDate date];
-    [self save];
     [_lock unlock];
+    [self save];
 
     [[IVDeviceSpoofing shared] enable:c.device];
     if ([c hasLocation]) [[IVLocationSpoofing shared] enable:c.location];
@@ -109,8 +110,8 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     [_lock lock];
     if (_active) _active.active = NO;
     _active = nil;
-    [self save];
     [_lock unlock];
+    [self save];
 
     [[IVDeviceSpoofing shared] disable];
     [[IVLocationSpoofing shared] disable];

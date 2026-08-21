@@ -32,25 +32,40 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.navigationController.navigationBar.prefersLargeTitles = YES;
 
-    // Navigation items
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Cancel" style:UIBarButtonItemStylePlain
                                                                              target:self action:@selector(cancel)];
-    
-    // Generate new device
-    _device = [IVFakeDevice generate];
+
+    @try {
+        _device = [IVFakeDevice generate];
+    } @catch (NSException *e) {
+        NSLog(@"[InstaVault] Exception generating device: %@", e);
+        _device = [IVFakeDevice new];
+    }
     _color = [IVContainer randomColor];
 
-    // Table
-    _table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    _table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _nameField = [[UITextField alloc] init];
+    _nameField.placeholder = @"My Instagram Account";
+    _nameField.borderStyle = UITextBorderStyleNone;
+    _nameField.font = [UIFont systemFontOfSize:17];
+    _nameField.textColor = [UIColor labelColor];
+    _nameField.returnKeyType = UIReturnKeyDone;
+    _nameField.delegate = self;
+
+    _table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
+    _table.translatesAutoresizingMaskIntoConstraints = NO;
     _table.delegate = self;
     _table.dataSource = self;
     _table.backgroundColor = [UIColor clearColor];
     _table.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    [_table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
     [self.view addSubview:_table];
 
-    // Save button at bottom
+    [NSLayoutConstraint activateConstraints:@[
+        [_table.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_table.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_table.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_table.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
+
     _saveBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     _saveBtn.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     [_saveBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
@@ -67,27 +82,27 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
         [_saveBtn.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-16],
         [_saveBtn.heightAnchor constraintEqualToConstant:54]
     ]];
-
-    // Adjust table inset for button
-    _table.contentInset = UIEdgeInsetsMake(0, 0, 80, 0);
 }
 
 - (void)cancel { [self dismissViewControllerAnimated:YES completion:nil]; }
 
 - (void)create {
     [self.view endEditing:YES];
-    NSString *n = self.nameField.text.length ? self.nameField.text : @"Container";
-    IVContainerManager *m = [IVContainerManager shared];
-    IVContainer *c = [m create:n];
-    c.device = _device;
-    c.color = _color;
-    if (self.coord.latitude != 0 || self.coord.longitude != 0) {
-        c.location = self.coord;
-        c.locName = self.locName;
+    @try {
+        NSString *n = (_nameField.text.length > 0) ? _nameField.text : @"Container";
+        IVContainerManager *m = [IVContainerManager shared];
+        IVContainer *c = [m create:n];
+        c.device = _device;
+        c.color = _color;
+        if (self.coord.latitude != 0 || self.coord.longitude != 0) {
+            c.location = self.coord;
+            c.locName = self.locName;
+        }
+        [m activate:c];
+        [self dismissViewControllerAnimated:YES completion:nil];
+    } @catch (NSException *e) {
+        NSLog(@"[InstaVault] Exception creating container: %@", e);
     }
-    [m save];
-    [m activate:c];
-    [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 #pragma mark - UITableView
@@ -117,53 +132,40 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
     switch (section) {
         case IVCreateSectionName: return @"A unique name to identify this container";
-        case IVCreateSectionDevice: return @"Each container gets a unique iPhone model, iOS version, UDID, and identifiers";
-        case IVCreateSectionLocation: return @"Optional: Set a fake GPS location for this container";
-        case IVCreateSectionAdvanced: return @"Regenerate device identity or change accent color";
+        case IVCreateSectionDevice: return @"Each container gets a unique device identity";
+        case IVCreateSectionLocation: return @"Optional: Set a fake GPS location";
+        case IVCreateSectionAdvanced: return @"Regenerate device identity or change color";
         default: return nil;
     }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:ip];
-    cell.accessoryType = UITableViewCellAccessoryNone;
+    if (ip.section == IVCreateSectionName) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"NameCell"];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        _nameField.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:_nameField];
+        [NSLayoutConstraint activateConstraints:@[
+            [_nameField.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
+            [_nameField.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12],
+            [_nameField.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
+            [_nameField.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16]
+        ]];
+        return cell;
+    }
+
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"DetailCell"];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    for (UIView *sv in cell.contentView.subviews) [sv removeFromSuperview];
 
     switch (ip.section) {
-        case IVCreateSectionName: {
-            if (ip.row == 0) {
-                cell.textLabel.text = @"";
-                _nameField = [[UITextField alloc] initWithFrame:CGRectZero];
-                _nameField.placeholder = @"My Instagram Account";
-                _nameField.borderStyle = UITextBorderStyleNone;
-                _nameField.font = [UIFont systemFontOfSize:17];
-                _nameField.textColor = [UIColor labelColor];
-                _nameField.clearButtonMode = UITextFieldViewModeWhileEditing;
-                _nameField.returnKeyType = UIReturnKeyDone;
-                _nameField.delegate = self;
-                _nameField.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-                _nameField.translatesAutoresizingMaskIntoConstraints = NO;
-                [cell.contentView addSubview:_nameField];
-                [NSLayoutConstraint activateConstraints:@[
-                    [_nameField.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
-                    [_nameField.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12],
-                    [_nameField.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
-                    [_nameField.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16]
-                ]];
-            }
-            break;
-        }
         case IVCreateSectionDevice: {
             if (ip.row == 0) {
                 cell.textLabel.text = @"Model";
-                cell.detailTextLabel.text = _device.modelName;
-                cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+                cell.detailTextLabel.text = _device.modelName ?: _device.model ?: @"Unknown";
                 cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
             } else if (ip.row == 1) {
                 cell.textLabel.text = @"iOS Version";
-                cell.detailTextLabel.text = _device.osVersion;
-                cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+                cell.detailTextLabel.text = _device.osVersion ?: @"Unknown";
             } else if (ip.row == 2) {
                 cell.textLabel.text = @"Regenerate Identity";
                 cell.textLabel.textColor = [UIColor systemBlueColor];
@@ -174,27 +176,27 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
         }
         case IVCreateSectionLocation: {
             if (ip.row == 0) {
-                cell.textLabel.text = self.coord.latitude != 0 || self.coord.longitude != 0
-                    ? [NSString stringWithFormat:@"📍 %@", self.locName ?: @"Custom Location"]
+                BOOL hasLoc = (self.coord.latitude != 0 || self.coord.longitude != 0);
+                cell.textLabel.text = hasLoc
+                    ? [NSString stringWithFormat:@"Location: %@", self.locName ?: @"Custom"]
                     : @"Set Fake Location";
-                cell.textLabel.textColor = self.coord.latitude != 0 ? [UIColor labelColor] : [UIColor systemBlueColor];
+                cell.textLabel.textColor = hasLoc ? [UIColor labelColor] : [UIColor systemBlueColor];
                 cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
             } else if (ip.row == 1) {
                 cell.textLabel.text = @"Clear Location";
                 cell.textLabel.textColor = [UIColor systemRedColor];
                 cell.textLabel.textAlignment = NSTextAlignmentCenter;
                 cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-                cell.hidden = !(self.coord.latitude != 0 || self.coord.longitude != 0);
+                BOOL hasLoc = (self.coord.latitude != 0 || self.coord.longitude != 0);
+                cell.hidden = !hasLoc;
             }
             break;
         }
         case IVCreateSectionAdvanced: {
             if (ip.row == 0) {
                 cell.textLabel.text = @"Accent Color";
-                cell.detailTextLabel.text = @"";
                 cell.selectionStyle = UITableViewCellSelectionStyleNone;
-                
-                // Color picker buttons
+
                 NSArray *colors = @[@"#FF3B30",@"#FF9500",@"#FFCC00",@"#34C759",
                                     @"#007AFF",@"#5856D6",@"#AF52DE",@"#FF2D55"];
                 UIStackView *stack = [[UIStackView alloc] init];
@@ -205,16 +207,12 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
                 for (NSString *hex in colors) {
                     UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
                     b.backgroundColor = [[IVThemeManager shared] hex:hex];
-                    b.layer.cornerRadius = 16;
+                    b.layer.cornerRadius = 14;
                     b.layer.borderWidth = [hex isEqualToString:_color] ? 3 : 0;
                     b.layer.borderColor = [UIColor labelColor].CGColor;
                     b.tag = [colors indexOfObject:hex];
                     [b addTarget:self action:@selector(colorPicked:) forControlEvents:UIControlEventTouchUpInside];
                     [stack addArrangedSubview:b];
-                    [NSLayoutConstraint activateConstraints:@[
-                        [b.heightAnchor constraintEqualToConstant:32],
-                        [b.widthAnchor constraintEqualToConstant:32]
-                    ]];
                 }
                 [cell.contentView addSubview:stack];
                 [NSLayoutConstraint activateConstraints:@[
@@ -239,13 +237,10 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (ip.section == IVCreateSectionDevice) {
         if (ip.row == 0) {
-            // Model picker - show as action sheet
             [self showModelPicker];
         } else if (ip.row == 2) {
             _device = [IVFakeDevice generate];
-            [tv reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionDevice]
-                  withRowAnimation:UITableViewRowAnimationAutomatic];
-            _saveBtn.backgroundColor = [[IVThemeManager shared] hex:_color];
+            [tv reloadData];
         }
     } else if (ip.section == IVCreateSectionLocation) {
         if (ip.row == 0) {
@@ -253,22 +248,20 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
             m.onPick = ^(CLLocationCoordinate2D c, NSString *name) {
                 self.coord = c;
                 self.locName = name;
-                [tv reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionLocation]
-                      withRowAnimation:UITableViewRowAnimationAutomatic];
+                [tv reloadData];
             };
             UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:m];
+            nav.modalPresentationStyle = UIModalPresentationFullScreen;
             [self presentViewController:nav animated:YES completion:nil];
         } else if (ip.row == 1) {
             self.coord = CLLocationCoordinate2DMake(0, 0);
             self.locName = nil;
-            [tv reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionLocation]
-                  withRowAnimation:UITableViewRowAnimationAutomatic];
+            [tv reloadData];
         }
     } else if (ip.section == IVCreateSectionAdvanced) {
         if (ip.row == 1) {
             _device = [IVFakeDevice generate];
-            [tv reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionDevice]
-                  withRowAnimation:UITableViewRowAnimationAutomatic];
+            [tv reloadData];
         }
     }
 }
@@ -278,8 +271,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
                         @"#007AFF",@"#5856D6",@"#AF52DE",@"#FF2D55"];
     _color = colors[b.tag];
     _saveBtn.backgroundColor = [[IVThemeManager shared] hex:_color];
-    [self.table reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionAdvanced]
-                  withRowAnimation:UITableViewRowAnimationAutomatic];
+    [self.table reloadData];
 }
 
 - (void)showModelPicker {
@@ -289,12 +281,10 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Select Model" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     for (NSString *m in models) {
         [a addAction:[UIAlertAction actionWithTitle:m style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
-            // Update device with selected model
             for (IVFakeDevice *d in [IVFakeDevice allModels]) {
                 if ([d.modelName isEqualToString:m]) {
                     _device = d;
-                    [self.table reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionDevice]
-                              withRowAnimation:UITableViewRowAnimationAutomatic];
+                    [self.table reloadData];
                     break;
                 }
             }

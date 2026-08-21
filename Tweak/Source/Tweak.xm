@@ -13,6 +13,15 @@
 @implementation IVOverlayWindow
 - (BOOL)canBecomeKeyWindow { return NO; }
 - (BOOL)canBecomeFirstResponder { return NO; }
+// Passthrough hit-testing: only the floating button (and its subviews) receive
+// touches. Every other point returns nil so the event falls through to
+// Instagram's window below — otherwise this full-screen overlay would swallow
+// all touches and freeze the app.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = [super hitTest:point withEvent:event];
+    if (hit == self || hit == self.rootViewController.view) return nil;
+    return hit;
+}
 @end
 
 static IVFloatingButton *_btn = nil;
@@ -56,7 +65,7 @@ static void IVEnsureOverlay(void) {
     _overlay.hidden = NO;
     UIViewController *vc = [[UIViewController alloc] init];
     vc.view.backgroundColor = [UIColor clearColor];
-    vc.view.userInteractionEnabled = NO;
+    vc.view.userInteractionEnabled = YES;
     _overlay.rootViewController = vc;
 }
 

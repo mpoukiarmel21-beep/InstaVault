@@ -2,24 +2,30 @@
 #import "IVFakeDevice.h"
 #import <CoreLocation/CoreLocation.h>
 
+static NSArray<NSString *> *IVRandomColors(void) {
+    static NSArray *colors = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        colors = @[@"#FF3B30",@"#FF9500",@"#FFCC00",@"#34C759",
+                   @"#007AFF",@"#5856D6",@"#AF52DE",@"#FF2D55"];
+    });
+    return colors;
+}
+
 @implementation IVContainer
+
++ (BOOL)supportsSecureCoding { return YES; }
 
 + (instancetype)withName:(NSString *)n {
     IVContainer *c = [[self alloc] init];
     c.cid = [[NSUUID UUID] UUIDString];
     c.name = n;
     c.device = [IVFakeDevice generate];
-    c.color = [self randomColor];
+    c.color = IVRandomColors()[arc4random_uniform((uint32_t)IVRandomColors().count)];
     c.created = [NSDate date];
     c.lastUsed = [NSDate date];
     c.active = NO;
     return c;
-}
-
-+ (NSString *)randomColor {
-    static NSArray *colors = @[@"#FF3B30",@"#FF9500",@"#FFCC00",@"#34C759",
-                               @"#007AFF",@"#5856D6",@"#AF52DE",@"#FF2D55"];
-    return colors[arc4random_uniform((uint32_t)colors.count)];
 }
 
 - (BOOL)hasLocation {
@@ -67,7 +73,6 @@
     return self;
 }
 
-- (BOOL)supportsSecureCoding { return YES; }
 - (instancetype)initWithCoder:(NSCoder *)c {
     self = [super init];
     if (self) {
@@ -84,6 +89,7 @@
     }
     return self;
 }
+
 - (void)encodeWithCoder:(NSCoder *)c {
     [c encodeObject:self.cid forKey:@"cid"];
     [c encodeObject:self.name forKey:@"name"];
@@ -95,6 +101,10 @@
     [c encodeBool:self.active forKey:@"active"];
     [c encodeObject:self.created forKey:@"created"];
     [c encodeObject:self.lastUsed forKey:@"lastUsed"];
+}
+
++ (NSString *)randomColor {
+    return IVRandomColors()[arc4random_uniform((uint32_t)IVRandomColors().count)];
 }
 
 @end

@@ -1,6 +1,7 @@
 #import "IVContainerCreateVC.h"
 #import "IVMapPickerVC.h"
 #import "IVContainerManager.h"
+#import "IVContainer.h"
 #import "IVFakeDevice.h"
 #import "IVThemeManager.h"
 #import <UIKit/UIKit.h>
@@ -46,7 +47,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     _table.dataSource = self;
     _table.backgroundColor = [UIColor clearColor];
     _table.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    _table.registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
+    [_table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
     [self.view addSubview:_table];
 
     // Save button at bottom
@@ -54,7 +55,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     _saveBtn.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     [_saveBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [_saveBtn setTitle:@"Create Container" forState:UIControlStateNormal];
-    _saveBtn.backgroundColor = [IVThemeManager shared].hex(_color);
+    _saveBtn.backgroundColor = [[IVThemeManager shared] hex:_color];
     _saveBtn.layer.cornerRadius = 14;
     [_saveBtn addTarget:self action:@selector(create) forControlEvents:UIControlEventTouchUpInside];
     _saveBtn.translatesAutoresizingMaskIntoConstraints = NO;
@@ -203,7 +204,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
                 stack.translatesAutoresizingMaskIntoConstraints = NO;
                 for (NSString *hex in colors) {
                     UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
-                    b.backgroundColor = [IVThemeManager shared].hex(hex);
+                    b.backgroundColor = [[IVThemeManager shared] hex:hex];
                     b.layer.cornerRadius = 16;
                     b.layer.borderWidth = [hex isEqualToString:_color] ? 3 : 0;
                     b.layer.borderColor = [UIColor labelColor].CGColor;
@@ -244,7 +245,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
             _device = [IVFakeDevice generate];
             [tv reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionDevice]
                   withRowAnimation:UITableViewRowAnimationAutomatic];
-            _saveBtn.backgroundColor = [IVThemeManager shared].hex(_color);
+            _saveBtn.backgroundColor = [[IVThemeManager shared] hex:_color];
         }
     } else if (ip.section == IVCreateSectionLocation) {
         if (ip.row == 0) {
@@ -276,7 +277,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     NSArray *colors = @[@"#FF3B30",@"#FF9500",@"#FFCC00",@"#34C759",
                         @"#007AFF",@"#5856D6",@"#AF52DE",@"#FF2D55"];
     _color = colors[b.tag];
-    _saveBtn.backgroundColor = [IVThemeManager shared].hex(_color);
+    _saveBtn.backgroundColor = [[IVThemeManager shared] hex:_color];
     [self.table reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionAdvanced]
                   withRowAnimation:UITableViewRowAnimationAutomatic];
 }

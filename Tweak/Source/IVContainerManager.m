@@ -6,6 +6,9 @@
 
 static NSString *const kIVListPath = @"InstaVault/Containers/list.plist";
 
+NSString *const kIVListChanged = @"kIVListChanged";
+NSString *const kIVActiveChanged = @"kIVActiveChanged";
+
 @implementation IVContainerManager
 
 + (instancetype)shared {

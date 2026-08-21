@@ -2,6 +2,7 @@
 #import <objc/runtime.h>
 #import <AdSupport/AdSupport.h>
 #import "IVDeviceSpoofing.h"
+#import "IVFakeDevice.h"
 
 // IDFV (identifierForVendor) and IDFA (advertisingIdentifier) spoofing
 

@@ -116,7 +116,7 @@
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (self.onPick) self.onPick(_pin.coordinate, n);
-            [self.navigationController popViewControllerAnimated:YES];
+            [self dismissViewControllerAnimated:YES completion:nil];
         });
     }];
 }

@@ -44,16 +44,16 @@ static NSArray<NSString *> *IVRandomColors(void) {
 
 - (NSDictionary *)toDict {
     NSMutableDictionary *d = [NSMutableDictionary new];
-    d[@"cid"] = self.cid;
-    d[@"name"] = self.name;
-    d[@"device"] = self.device.toDict;
+    d[@"cid"] = self.cid ?: @"";
+    d[@"name"] = self.name ?: @"";
+    d[@"device"] = self.device.toDict ?: @{};
     d[@"locLat"] = @(self.location.latitude);
     d[@"locLon"] = @(self.location.longitude);
-    d[@"locName"] = self.locName;
-    d[@"color"] = self.color;
+    d[@"locName"] = self.locName ?: @"";
+    d[@"color"] = self.color ?: @"#007AFF";
     d[@"active"] = @(self.active);
-    d[@"created"] = self.created;
-    d[@"lastUsed"] = self.lastUsed;
+    d[@"created"] = self.created ?: [NSDate date];
+    d[@"lastUsed"] = self.lastUsed ?: [NSDate date];
     return [d copy];
 }
 

@@ -60,13 +60,11 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 }
 
 - (void)save {
-    [_lock lock];
     NSMutableArray *arr = [NSMutableArray new];
     for (IVContainer *c in _list) [arr addObject:c.toDict];
     NSData *data = [NSKeyedArchiver archivedDataWithRootObject:arr requiringSecureCoding:NO error:nil];
     [data writeToFile:[self listFile] atomically:YES];
     [[IVDiagnostics shared] info:[NSString stringWithFormat:@"Saved %lu containers", (unsigned long)_list.count]];
-    [_lock unlock];
 }
 
 - (IVContainer *)create:(NSString *)name {

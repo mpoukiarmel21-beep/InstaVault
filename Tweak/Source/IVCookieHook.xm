@@ -1,47 +1,82 @@
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-#import <objc/runtime.h>
-#import "IVContainer.h"
 #import "IVContainerManager.h"
-#import "IVFakeDevice.h"
 
-static NSMutableDictionary *cookieStorage = nil;
+// Per-container NSHTTPCookieStorage isolation via ObjC swizzling
 
-typedef NSHTTPCookieStorage *(*origCookieFunc)(id, SEL);
-static origCookieFunc orig_sharedHTTPCookieStorage = NULL;
-
-static NSHTTPCookieStorage *hook_sharedHTTPCookieStorage(id self, SEL _cmd) {
-    IVContainer *a = [IVContainerManager shared].active;
-    if (!a) return orig_sharedHTTPCookieStorage(self, _cmd);
-    static dispatch_once_t o;
-    dispatch_once(&o, ^{ cookieStorage = [NSMutableDictionary new]; });
-    NSHTTPCookieStorage *s = cookieStorage[a.cid];
-    if (!s) { s = orig_sharedHTTPCookieStorage(self, _cmd); cookieStorage[a.cid] = s; }
-    return s;
+static IMP orig_sharedHTTPCookieStorage;
+static id hooked_sharedHTTPCookieStorage(id self, SEL _cmd) {
+    IVContainer *active = [IVContainerManager shared].active;
+    if (active) {
+        NSString *path = active.cookiePath;
+        NSHTTPCookieStorage *store = [[NSHTTPCookieStorage alloc] initWithStorageLocation:[NSURL fileURLWithPath:path]];
+        return store;
+    }
+    return ((id(*)(id, SEL))orig_sharedHTTPCookieStorage)(self, _cmd);
 }
 
-typedef NSUUID *(*origIDFVFunc)(id, SEL);
-static origIDFVFunc orig_identifierForVendor = NULL;
+static IMP orig_cookies;
+static NSArray *hooked_cookies(id self, SEL _cmd) {
+    IVContainer *active = [IVContainerManager shared].active;
+    if (active) {
+        NSString *path = active.cookiePath;
+        NSHTTPCookieStorage *store = [[NSHTTPCookieStorage alloc] initWithStorageLocation:[NSURL fileURLWithPath:path]];
+        return [store cookies];
+    }
+    return ((NSArray *(*)(id, SEL))orig_cookies)(self, _cmd);
+}
 
-static NSUUID *hook_identifierForVendor(id self, SEL _cmd) {
-    IVContainer *a = [IVContainerManager shared].active;
-    if (a && a.device) return [[NSUUID alloc] initWithUUIDString:a.device.idfv];
-    return orig_identifierForVendor(self, _cmd);
+static IMP orig_setCookie;
+static void hooked_setCookie(id self, SEL _cmd, id cookie) {
+    IVContainer *active = [IVContainerManager shared].active;
+    if (active) {
+        NSString *path = active.cookiePath;
+        NSHTTPCookieStorage *store = [[NSHTTPCookieStorage alloc] initWithStorageLocation:[NSURL fileURLWithPath:path]];
+        [store setCookie:cookie];
+        return;
+    }
+    ((void(*)(id, SEL, id))orig_setCookie)(self, _cmd, cookie);
+}
+
+static IMP orig_deleteCookie;
+static void hooked_deleteCookie(id self, SEL _cmd, id cookie) {
+    IVContainer *active = [IVContainerManager shared].active;
+    if (active) {
+        NSString *path = active.cookiePath;
+        NSHTTPCookieStorage *store = [[NSHTTPCookieStorage alloc] initWithStorageLocation:[NSURL fileURLWithPath:path]];
+        [store deleteCookie:cookie];
+        return;
+    }
+    ((void(*)(id, SEL, id))orig_deleteCookie)(self, _cmd, cookie);
 }
 
 __attribute__((constructor))
-static void initCookieHook() {
-    Class cookieClass = [NSHTTPCookieStorage class];
-    Method m1 = class_getClassMethod(cookieClass, @selector(sharedHTTPCookieStorage));
-    orig_sharedHTTPCookieStorage = (origCookieFunc)method_getImplementation(m1);
-    method_setImplementation(m1, (IMP)hook_sharedHTTPCookieStorage);
+static void IVInstallCookieHook(void) {
+    Class storage = objc_getClass("NSHTTPCookieStorage");
+    if (!storage) return;
 
-    Class devClass = [UIDevice class];
-    Method m2 = class_getInstanceMethod(devClass, @selector(identifierForVendor));
-    if (m2) {
-        orig_identifierForVendor = (origIDFVFunc)method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)hook_identifierForVendor);
+    Method m_shared = class_getClassMethod(storage, @selector(sharedHTTPCookieStorage));
+    if (m_shared) {
+        orig_sharedHTTPCookieStorage = method_getImplementation(m_shared);
+        method_setImplementation(m_shared, (IMP)hooked_sharedHTTPCookieStorage);
     }
 
-    NSLog(@"[InstaVault] Cookie hook installed");
+    Method m_cookies = class_getInstanceMethod(storage, @selector(cookies));
+    if (m_cookies) {
+        orig_cookies = method_getImplementation(m_cookies);
+        method_setImplementation(m_cookies, (IMP)hooked_cookies);
+    }
+
+    Method m_set = class_getInstanceMethod(storage, @selector(setCookie:));
+    if (m_set) {
+        orig_setCookie = method_getImplementation(m_set);
+        method_setImplementation(m_set, (IMP)hooked_setCookie);
+    }
+
+    Method m_del = class_getInstanceMethod(storage, @selector(deleteCookie:));
+    if (m_del) {
+        orig_deleteCookie = method_getImplementation(m_del);
+        method_setImplementation(m_del, (IMP)hooked_deleteCookie);
+    }
+
+    NSLog(@"[InstaVault] NSHTTPCookieStorage hooks installed");
 }

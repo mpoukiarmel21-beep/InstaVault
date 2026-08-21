@@ -1,68 +1,83 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
-#import <objc/runtime.h>
-#import "IVContainer.h"
-#import "IVContainerManager.h"
 #import "IVLocationSpoofing.h"
 
-static void (*orig_startUpdatingLocation)(id, SEL) = NULL;
-static CLLocation *(*orig_location)(id, SEL) = NULL;
-static void (*orig_requestLocation)(id, SEL) = NULL;
+// Pure ObjC runtime swizzling for CLLocationManager to spoof GPS location
 
-static void IVFeedDelegate(CLLocationManager *self) {
-    IVContainer *a = [IVContainerManager shared].active;
-    if (!a || ![a hasLocation]) return;
-    IVLocationSpoofing *s = [IVLocationSpoofing shared];
-    [s enable:a.location];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if ([self.delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)])
-            [self.delegate locationManager:self didUpdateLocations:@[[s fake]]];
-    });
+static IMP orig_location;
+static CLLocation *hooked_location(id self, SEL _cmd) {
+    IVLocationSpoofing *sp = [IVLocationSpoofing shared];
+    if (sp.on) return sp.fake;
+    return ((CLLocation *(*)(id, SEL))orig_location)(self, _cmd);
 }
 
-static void hook_startUpdatingLocation(id self, SEL _cmd) {
-    IVContainer *a = [IVContainerManager shared].active;
-    if (a && [a hasLocation]) {
-        IVFeedDelegate(self);
-    } else {
-        orig_startUpdatingLocation(self, _cmd);
+static IMP orig_startUpdatingLocation;
+static void hooked_startUpdatingLocation(id self, SEL _cmd) {
+    IVLocationSpoofing *sp = [IVLocationSpoofing shared];
+    if (sp.on) {
+        // Fire delegate callback immediately with fake location
+        id delegate = ((id(*)(id, SEL))class_getMethodImplementation([CLLocationManager class], @selector(delegate)))(self, @selector(delegate));
+        if (delegate && [delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
+            [delegate performSelectorOnMainThread:@selector(locationManager:didUpdateLocations:)
+                                       withObject:self
+                                    withObject:@[sp.fake]
+                                 waitUntilDone:NO];
+        }
+        return;
     }
+    ((void(*)(id, SEL))orig_startUpdatingLocation)(self, _cmd);
 }
 
-static CLLocation *hook_location(id self, SEL _cmd) {
-    IVLocationSpoofing *s = [IVLocationSpoofing shared];
-    if (s.on) return [s fake];
-    return orig_location(self, _cmd);
-}
-
-static void hook_requestLocation(id self, SEL _cmd) {
-    IVContainer *a = [IVContainerManager shared].active;
-    if (a && [a hasLocation]) {
-        IVFeedDelegate(self);
-    } else {
-        orig_requestLocation(self, _cmd);
+static IMP orig_requestLocation;
+static void hooked_requestLocation(id self, SEL _cmd) {
+    IVLocationSpoofing *sp = [IVLocationSpoofing shared];
+    if (sp.on) {
+        id delegate = ((id(*)(id, SEL))class_getMethodImplementation([CLLocationManager class], @selector(delegate)))(self, @selector(delegate));
+        if (delegate && [delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
+            [delegate performSelectorOnMainThread:@selector(locationManager:didUpdateLocations:)
+                                       withObject:self
+                                    withObject:@[sp.fake]
+                                 waitUntilDone:NO];
+        }
+        return;
     }
+    ((void(*)(id, SEL))orig_requestLocation)(self, _cmd);
+}
+
+static IMP orig_desiredAccuracy;
+static CLLocationAccuracy hooked_desiredAccuracy(id self, SEL _cmd) {
+    IVLocationSpoofing *sp = [IVLocationSpoofing shared];
+    if (sp.on) return kCLLocationAccuracyBest;
+    return ((CLLocationAccuracy(*)(id, SEL))orig_desiredAccuracy)(self, _cmd);
 }
 
 __attribute__((constructor))
-static void initLocationHook() {
-    Class cls = objc_getClass("CLLocationManager");
-    if (cls) {
-        Method m1 = class_getInstanceMethod(cls, @selector(startUpdatingLocation));
-        if (m1) {
-            orig_startUpdatingLocation = (void(*)(id, SEL))method_getImplementation(m1);
-            method_setImplementation(m1, (IMP)hook_startUpdatingLocation);
-        }
-        Method m2 = class_getInstanceMethod(cls, @selector(location));
-        if (m2) {
-            orig_location = (CLLocation *(*)(id, SEL))method_getImplementation(m2);
-            method_setImplementation(m2, (IMP)hook_location);
-        }
-        Method m3 = class_getInstanceMethod(cls, @selector(requestLocation));
-        if (m3) {
-            orig_requestLocation = (void(*)(id, SEL))method_getImplementation(m3);
-            method_setImplementation(m3, (IMP)hook_requestLocation);
-        }
+static void IVInstallLocationHook(void) {
+    Class clm = objc_getClass("CLLocationManager");
+    
+    Method m_location = class_getInstanceMethod(clm, @selector(location));
+    if (m_location) {
+        orig_location = method_getImplementation(m_location);
+        method_setImplementation(m_location, (IMP)hooked_location);
     }
-    NSLog(@"[InstaVault] Location hook installed");
+
+    Method m_start = class_getInstanceMethod(clm, @selector(startUpdatingLocation));
+    if (m_start) {
+        orig_startUpdatingLocation = method_getImplementation(m_start);
+        method_setImplementation(m_start, (IMP)hooked_startUpdatingLocation);
+    }
+
+    Method m_request = class_getInstanceMethod(clm, @selector(requestLocation));
+    if (m_request) {
+        orig_requestLocation = method_getImplementation(m_request);
+        method_setImplementation(m_request, (IMP)hooked_requestLocation);
+    }
+
+    Method m_accuracy = class_getInstanceMethod(clm, @selector(desiredAccuracy));
+    if (m_accuracy) {
+        orig_desiredAccuracy = method_getImplementation(m_accuracy);
+        method_setImplementation(m_accuracy, (IMP)hooked_desiredAccuracy);
+    }
+
+    NSLog(@"[InstaVault] CLLocationManager hooks installed");
 }

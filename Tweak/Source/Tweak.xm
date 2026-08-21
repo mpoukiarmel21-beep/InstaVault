@@ -13,10 +13,6 @@
 @implementation IVOverlayWindow
 - (BOOL)canBecomeKeyWindow { return NO; }
 - (BOOL)canBecomeFirstResponder { return NO; }
-// Passthrough hit-testing: only the floating button (and its subviews) receive
-// touches. Every other point returns nil so the event falls through to
-// Instagram's window below — otherwise this full-screen overlay would swallow
-// all touches and freeze the app.
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
     if (hit == self || hit == self.rootViewController.view) return nil;
@@ -103,7 +99,7 @@ __attribute__((constructor))
 static void IVInit() {
     @autoreleasepool {
         NSLog(@"[InstaVault] Loaded");
-        [[IVDiagnostics shared] info:@"=== InstaVault v1.0.0 ==="];
+        [[IVDiagnostics shared] info:@"=== InstaVault v2.0.0 ==="];
         [[IVDiagnostics shared] info:@"Tweak init"];
         [[IVDiagnostics shared] installCrashHandler];
 

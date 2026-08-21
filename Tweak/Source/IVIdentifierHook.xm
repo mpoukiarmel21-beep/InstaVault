@@ -1,37 +1,47 @@
 #import <Foundation/Foundation.h>
 #import <AdSupport/AdSupport.h>
-#import <objc/runtime.h>
-#import "IVContainer.h"
-#import "IVContainerManager.h"
-#import "IVFakeDevice.h"
+#import "IVDeviceSpoofing.h"
 
-static NSUUID *(*orig_advertisingIdentifier)(id, SEL) = NULL;
-static BOOL (*orig_isAdvertisingTrackingEnabled)(id, SEL) = NULL;
+// IDFV (identifierForVendor) and IDFA (advertisingIdentifier) spoofing
 
-static NSUUID *hook_advertisingIdentifier(id self, SEL _cmd) {
-    IVContainer *a = [IVContainerManager shared].active;
-    if (a && a.device) return [[NSUUID alloc] initWithUUIDString:a.device.idfa];
-    return orig_advertisingIdentifier(self, _cmd);
+static IMP orig_idfv;
+static NSString *hooked_idfv(id self, SEL _cmd) {
+    IVDeviceSpoofing *sp = [IVDeviceSpoofing shared];
+    if (sp.on && sp.dev.idfv) return sp.dev.idfv;
+    return ((NSString *(*)(id, SEL))orig_idfv)(self, _cmd);
 }
 
-static BOOL hook_isAdvertisingTrackingEnabled(id self, SEL _cmd) {
-    return YES;
+static IMP orig_idfa;
+static NSString *hooked_idfa(id self, SEL _cmd) {
+    IVDeviceSpoofing *sp = [IVDeviceSpoofing shared];
+    if (sp.on && sp.dev.idfa) return sp.dev.idfa;
+    return ((NSString *(*)(id, SEL))orig_idfa)(self, _cmd);
 }
 
 __attribute__((constructor))
-static void initIdentifierHook() {
-    Class cls = objc_getClass("ASIdentifierManager");
-    if (cls) {
-        Method m1 = class_getInstanceMethod(cls, @selector(advertisingIdentifier));
-        if (m1) {
-            orig_advertisingIdentifier = (NSUUID *(*)(id, SEL))method_getImplementation(m1);
-            method_setImplementation(m1, (IMP)hook_advertisingIdentifier);
-        }
-        Method m2 = class_getInstanceMethod(cls, @selector(isAdvertisingTrackingEnabled));
-        if (m2) {
-            orig_isAdvertisingTrackingEnabled = (BOOL(*)(id, SEL))method_getImplementation(m2);
-            method_setImplementation(m2, (IMP)hook_isAdvertisingTrackingEnabled);
+static void IVInstallIdentifierHook(void) {
+    Class uidd = objc_getClass("UIDevice");
+    if (uidd) {
+        Method m_idfv = class_getInstanceMethod(uidd, @selector(identifierForVendor));
+        if (m_idfv) {
+            orig_idfv = method_getImplementation(m_idfv);
+            method_setImplementation(m_idfv, (IMP)hooked_idfv);
         }
     }
-    NSLog(@"[InstaVault] Identifier hook installed");
+
+    Class as = objc_getClass("ASIdentifierManager");
+    if (as) {
+        Method m_shared = class_getClassMethod(as, @selector(sharedManager));
+        if (m_shared) {
+            // We can't easily hook the class method's return value,
+            // so hook the instance method advertisingIdentifier
+            Method m_idfa = class_getInstanceMethod(as, @selector(advertisingIdentifier));
+            if (m_idfa) {
+                orig_idfa = method_getImplementation(m_idfa);
+                method_setImplementation(m_idfa, (IMP)hooked_idfa);
+            }
+        }
+    }
+
+    NSLog(@"[InstaVault] IDFV/IDFA hooks installed");
 }

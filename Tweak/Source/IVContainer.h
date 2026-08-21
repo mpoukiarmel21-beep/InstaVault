@@ -13,6 +13,7 @@
 @property (nonatomic, strong) NSDate *created;
 @property (nonatomic, strong) NSDate *lastUsed;
 + (instancetype)withName:(NSString *)n;
++ (NSString *)randomColor;
 - (NSDictionary *)toDict;
 - (instancetype)initWithDict:(NSDictionary *)d;
 - (BOOL)hasLocation;

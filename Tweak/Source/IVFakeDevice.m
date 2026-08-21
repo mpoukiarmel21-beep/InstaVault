@@ -121,7 +121,8 @@ static NSString *RandSerial(void) {
     if (self) {
         NSArray *indices = kSpecIndices();
         NSUInteger idx = arc4random_uniform((uint32_t)indices.count);
-        const IVDeviceSpec *spec = &kSpecs[indices[idx].intValue];
+        NSUInteger specIdx = [(NSNumber *)indices[idx] unsignedIntegerValue];
+        const IVDeviceSpec *spec = &kSpecs[specIdx];
 
         _udid = [[[NSUUID UUID] UUIDString] uppercaseString];
         _idfv = [[[NSUUID UUID] UUIDString] uppercaseString];

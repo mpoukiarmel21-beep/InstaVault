@@ -63,19 +63,24 @@ jobs:
         run: |
           IPA_URL="${{ inputs.ipa_url }}"
           if [[ "$IPA_URL" == *gofile.io* ]]; then
-            # Gofile: extract folder code and use Python downloader
             FOLDER_CODE=$(echo "$IPA_URL" | sed 's|.*/d/||' | sed 's|/.*||')
             python3 "$GITHUB_WORKSPACE/Tweak/download_gofile.py" "$FOLDER_CODE"
+          elif [[ "$IPA_URL" == *github.com*releases*download* ]]; then
+            # GitHub release direct download URL — extract tag and asset name
+            REPO=$(echo "$IPA_URL" | sed -E 's|https?://github.com/||; s|/releases/download/.*||')
+            TAG=$(echo "$IPA_URL" | sed -E 's|.*/releases/download/||; s|/[^/]*$||')
+            ASSET=$(echo "$IPA_URL" | sed -E 's|.*/releases/download/[^/]+/||')
+            echo "Downloading from repo=$REPO tag=$TAG asset=$ASSET"
+            gh release download "$TAG" --repo "$REPO" --pattern "$ASSET" -o Input.ipa
           elif [[ "$IPA_URL" == http* ]]; then
-            # Direct URL
             echo "Downloading IPA from: $IPA_URL"
             curl -L -o Input.ipa "$IPA_URL" --connect-timeout 30 --max-time 600
           else
-            # Try as GitHub release asset from this repo
-            echo "Trying GitHub release: $IPA_URL"
+            echo "Trying GitHub release tag: $IPA_URL"
             gh release download "$IPA_URL" --pattern "*.ipa" -D . 2>/dev/null \
               || curl -L -o Input.ipa "https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/$IPA_URL/com.burbn.instagram_442.0.0_und3fined.ipa" --connect-timeout 30 --max-time 600
           fi
+          file Input.ipa
           ls -lh Input.ipa
 
       - name: Inject & Package IPA

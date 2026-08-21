@@ -55,6 +55,8 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 - (BOOL)save {
     NSMutableArray *a=[NSMutableArray array];
     for(IVContainer *c in self.list) [a addObject:[c toDict]];
+    NSString *dir=[[self path] stringByDeletingLastPathComponent];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
     return [a writeToFile:[self path] atomically:YES];
 }
 

@@ -48,6 +48,16 @@ jobs:
           make clean all
           echo "=== Built files ==="
           find .theos/obj -name "*.dylib" -type f
+          DYLIB=$(find .theos/obj -name "*.dylib" -type f | head -1)
+          echo "=== otool -L ==="
+          otool -L "$DYLIB"
+          # Guard: a CydiaSubstrate dependency makes the dylib fail to load on
+          # non-jailbroken (sideloaded) devices — the whole tweak would be dead.
+          if otool -L "$DYLIB" | grep -qi "substrate"; then
+            echo "::error::Dylib links CydiaSubstrate — it will NOT load on sideloaded devices. Build aborted."
+            exit 1
+          fi
+          echo "OK: substrate-free dylib"
 
       - name: Download IPA
         run: |

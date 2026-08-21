@@ -1,10 +1,16 @@
-INSTALL_TARGET_PROCESSES = Instagram
 ARCHS = arm64
 TARGET = iphone:clang:latest:13.0
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = InstaVault
+# NOTE: This is a LIBRARY target (plain dylib), NOT a TWEAK target.
+# A tweak.mk target auto-links /Library/Frameworks/CydiaSubstrate.framework,
+# which does not exist on non-jailbroken (sideloaded) devices — dyld then
+# fails to load the dylib and the whole tweak silently dies. Setting
+# InstaVault_USE_SUBSTRATE = 0 did NOT stop the linkage in this Theos/CI
+# setup, so we use library.mk instead. All hooks are manual ObjC
+# method_setImplementation (no %hook / MSHook*), so no Substrate is needed.
+LIBRARY_NAME = InstaVault
 
 InstaVault_FILES = Source/Tweak.xm \
 	Source/IVContainer.m \
@@ -26,6 +32,5 @@ InstaVault_FILES = Source/Tweak.xm \
 
 InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-error=unguarded-availability-new
 InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport
-InstaVault_USE_SUBSTRATE = 0
 
-include $(THEOS_MAKE_PATH)/tweak.mk
+include $(THEOS_MAKE_PATH)/library.mk

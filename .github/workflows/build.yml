@@ -71,7 +71,7 @@ jobs:
             TAG=$(echo "$IPA_URL" | sed -E 's|.*/releases/download/||; s|/[^/]*$||')
             ASSET=$(echo "$IPA_URL" | sed -E 's|.*/releases/download/[^/]+/||')
             echo "Downloading from repo=$REPO tag=$TAG asset=$ASSET"
-            gh release download "$TAG" --repo "$REPO" --pattern "$ASSET" -o Input.ipa
+            gh release download "$TAG" --repo "$REPO" --pattern "$ASSET" -O Input.ipa
           elif [[ "$IPA_URL" == http* ]]; then
             echo "Downloading IPA from: $IPA_URL"
             curl -L -o Input.ipa "$IPA_URL" --connect-timeout 30 --max-time 600

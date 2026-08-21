@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #import <CoreLocation/CoreLocation.h>
 #import "IVLocationSpoofing.h"
 

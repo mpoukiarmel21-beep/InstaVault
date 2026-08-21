@@ -105,7 +105,7 @@
     [v addSubview:subtitle];
 
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    btn.setTitleColor = [UIColor whiteColor];
+    [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     btn.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     [btn setTitle:@"Create Container" forState:UIControlStateNormal];
     btn.backgroundColor = [UIColor systemBlueColor];

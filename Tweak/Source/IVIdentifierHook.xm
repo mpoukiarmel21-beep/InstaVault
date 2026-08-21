@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #import <AdSupport/AdSupport.h>
 #import "IVDeviceSpoofing.h"
 

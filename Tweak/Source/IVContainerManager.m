@@ -1,5 +1,7 @@
 #import "IVContainerManager.h"
 #import "IVContainer.h"
+#import "IVDeviceSpoofing.h"
+#import "IVLocationSpoofing.h"
 #import "IVDiagnostics.h"
 
 static NSString *const kIVListPath = @"InstaVault/Containers/list.plist";

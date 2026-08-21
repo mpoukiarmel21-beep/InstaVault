@@ -239,7 +239,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
     if (ip.section == IVCreateSectionDevice) {
         if (ip.row == 0) {
             // Model picker - show as action sheet
-            self.showModelPicker();
+            [self showModelPicker];
         } else if (ip.row == 2) {
             _device = [IVFakeDevice generate];
             [tv reloadSections:[NSIndexSet indexSetWithIndex:IVCreateSectionDevice]

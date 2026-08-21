@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #import "IVContainerManager.h"
+#import "IVContainer.h"
 
 // Per-container NSUserDefaults isolation
 

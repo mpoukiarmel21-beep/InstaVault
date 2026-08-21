@@ -60,6 +60,8 @@ jobs:
           echo "OK: substrate-free dylib"
 
       - name: Download IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           IPA_URL="${{ inputs.ipa_url }}"
           if [[ "$IPA_URL" == *gofile.io* ]]; then

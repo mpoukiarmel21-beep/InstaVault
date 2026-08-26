@@ -49,6 +49,10 @@ jobs:
           echo "=== Built files ==="
           find .theos/obj -name "*.dylib" -type f
           DYLIB=$(find .theos/obj -name "*.dylib" -type f | head -1)
+          if [ -z "$DYLIB" ] || [ ! -f "$DYLIB" ]; then
+            echo "::error::Build produced no dylib — compilation failed. Aborting."
+            exit 1
+          fi
           echo "=== otool -L ==="
           otool -L "$DYLIB"
           # Guard: a CydiaSubstrate dependency makes the dylib fail to load on
@@ -89,6 +93,10 @@ jobs:
         run: |
           export PATH="$THEOS/bin:$PATH"
           DYLIB=$(find Tweak/.theos/obj -name "*.dylib" -type f | head -1)
+          if [ -z "$DYLIB" ] || [ ! -f "$DYLIB" ]; then
+            echo "::error::No dylib to inject. Aborting."
+            exit 1
+          fi
           echo "Dylib: $DYLIB"
 
           WORKDIR=$(mktemp -d)
@@ -99,22 +107,34 @@ jobs:
 
           APP=$(ls -d Payload/*.app | head -1)
           echo "App: $APP"
+          APP_NAME=$(basename "$APP" .app)
+          BIN="$APP/$APP_NAME"
+          if [ ! -f "$BIN" ]; then
+            # Fall back to the CFBundleExecutable if the binary name differs.
+            BIN="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          fi
+          echo "Binary: $BIN"
 
           echo "[2/5] Copying dylib..."
           mkdir -p "$APP/Frameworks"
           cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
 
           echo "[3/5] Injecting load command..."
-          insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$APP/Instagram"
+          insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$BIN"
+          if ! otool -l "$BIN" | grep -q "InstaVault.dylib"; then
+            echo "::error::Load command not present after insert_dylib. Aborting."
+            exit 1
+          fi
 
           echo "[4/5] Re-signing ad-hoc..."
           for fw in "$APP/Frameworks/"*.dylib; do
             codesign --force --sign - "$fw"
           done
-          codesign --force --sign - "$APP/Instagram"
+          codesign --force --sign - "$BIN"
+          codesign --verify --verbose "$BIN" || { echo "::error::codesign verify failed"; exit 1; }
 
           echo "[5/5] Creating IPA..."
-          zip -r -q "$GITHUB_WORKSPACE/InstaVault.ipa" Payload/
+          zip -r -X -q "$GITHUB_WORKSPACE/InstaVault.ipa" Payload/ -x '*.DS_Store'
 
           echo "=== Done ==="
           ls -lh "$GITHUB_WORKSPACE/InstaVault.ipa"

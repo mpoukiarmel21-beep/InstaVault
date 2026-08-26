@@ -10,6 +10,25 @@
 #import "../Spoof/IVDeviceIdentity.h"
 #import "../Spoof/IVLocaleSpoof.h"
 
+// Le conteneur actif n'est appliqué qu'UNE fois, au lancement (redirections
+// HOME/keychain/prefs + spoof device/locale dans le constructeur). Basculer de
+// conteneur exige donc un vrai redémarrage du process. iOS n'autorise pas une
+// app à se relancer elle-même : on la met en arrière-plan (animation « home »
+// pour ne pas ressembler à un crash) puis on quitte proprement ; il suffit de
+// rouvrir l'app pour qu'elle démarre sur le conteneur fraîchement activé.
+static void IVCloseAppForSwitch(void) {
+    UIApplication *app = UIApplication.sharedApplication;
+    SEL suspend = NSSelectorFromString(@"suspend");
+    if ([app respondsToSelector:suspend]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [app performSelector:suspend];
+#pragma clang diagnostic pop
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ exit(0); });
+}
+
 @interface IVPanelVC () <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, copy) NSArray<IVContainer *> *items;
@@ -234,11 +253,18 @@
         [self warn:@"Échec" msg:@"Impossible d'enregistrer le conteneur actif (écriture disque échouée). Réessaie."];
         return;
     }
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Redémarrage requis"
-        message:@"Ferme complètement Instagram (glisse-la hors du multitâche) puis rouvre-la pour basculer sur ce conteneur."
+    // Le choix est persisté : il reste à redémarrer pour l'appliquer. On ferme
+    // l'app automatiquement après une brève confirmation (aucun bouton — la
+    // fermeture est le geste). Le conteneur par défaut reste intact comme
+    // repli : activer un autre conteneur ne le supprime jamais.
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Conteneur activé"
+        message:[NSString stringWithFormat:@"« %@ » est prêt.\nL'app va se fermer — rouvre-la pour l'utiliser.", c.name]
                                                        preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
+    a.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    [self presentViewController:a animated:YES completion:^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.4 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ IVCloseAppForSwitch(); });
+    }];
 }
 
 - (void)editLocationFromControl:(UIButton *)sender {

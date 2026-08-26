@@ -41,6 +41,7 @@ static char *gSpoofedBuildC = NULL;          // kern.osversion
 
 // Saved originals.
 static int (*orig_sysctlbyname)(const char *, void *, size_t *, void *, size_t) = NULL;
+static int (*orig_sysctl)(int *, u_int, void *, size_t *, void *, size_t) = NULL;
 static int (*orig_uname)(struct utsname *) = NULL;
 
 @implementation IVDeviceSpoof
@@ -95,6 +96,25 @@ static int iv_uname(struct utsname *u) {
         strlcpy(u->machine, gSpoofedModelC, sizeof(u->machine));
     }
     return r;
+}
+
+// Raw MIB path: sysctl({CTL_HW, HW_MACHINE}) — some fingerprint libraries read
+// the model this way instead of the string API. Mirror the hw.machine spoof with
+// the same size-query / ENOMEM contract. Only HW_MACHINE is touched: HW_MODEL
+// returns the board id (e.g. "D79AP"), a different value we must NOT rewrite to
+// the marketing identifier or it would be internally inconsistent.
+static int iv_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
+    if (gSpoofedModelC && name && namelen >= 2 && name[0] == CTL_HW && name[1] == HW_MACHINE) {
+        const char *spoof = gSpoofedModelC;
+        size_t need = strlen(spoof) + 1;
+        if (!oldp) { if (oldlenp) *oldlenp = need; return 0; }        // size query
+        if (!oldlenp) { errno = EINVAL; return -1; }                 // buffer with no length
+        if (*oldlenp < need) { errno = ENOMEM; return -1; }          // caller's buffer too small
+        memcpy(oldp, spoof, need);
+        *oldlenp = need;
+        return 0;
+    }
+    return orig_sysctl(name, namelen, oldp, oldlenp, newp, newlen);
 }
 
 #pragma mark - ObjC swizzle helpers
@@ -186,9 +206,10 @@ static void IVInstallIOSVersionSpoof(void) {
     // iOS-version ObjC surfaces (no-op when unset above).
     IVInstallIOSVersionSpoof();
 
-    // hw.machine (+ kern.os* when set) via sysctlbyname + uname.
+    // hw.machine (+ kern.os* when set) via sysctlbyname + sysctl (raw MIB) + uname.
     struct rebinding r[] = {
         {"sysctlbyname", (void *)iv_sysctlbyname, (void **)&orig_sysctlbyname},
+        {"sysctl",       (void *)iv_sysctl,       (void **)&orig_sysctl},
         {"uname",        (void *)iv_uname,        (void **)&orig_uname},
     };
     int rc = rebind_symbols(r, sizeof(r) / sizeof(r[0]));

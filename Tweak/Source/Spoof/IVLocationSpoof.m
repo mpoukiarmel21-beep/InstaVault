@@ -36,6 +36,12 @@ static void (*orig_start)(id, SEL) = NULL;
 static void (*orig_stop)(id, SEL) = NULL;
 static void (*orig_request)(id, SEL) = NULL;
 static CLLocation *(*orig_update_location)(id, SEL) = NULL;
+// Authorization surfaces (see the hooks in +install).
+static CLAuthorizationStatus (*orig_auth_inst)(id, SEL) = NULL;   // -[CLLocationManager authorizationStatus] (iOS 14+)
+static CLAuthorizationStatus (*orig_auth_cls)(id, SEL)  = NULL;   // +[CLLocationManager authorizationStatus] (deprecated)
+static BOOL (*orig_services_enabled)(id, SEL) = NULL;             // +[CLLocationManager locationServicesEnabled]
+static void (*orig_req_wheninuse)(id, SEL) = NULL;
+static void (*orig_req_always)(id, SEL)    = NULL;
 static BOOL gInstalled = NO;
 
 // Per-manager associated state: the repeating reconcile timer, and whether WE
@@ -61,6 +67,22 @@ static void IVDeliverFake(CLLocationManager *mgr) {
     if ([del respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
         [del locationManager:mgr didUpdateLocations:@[ fake ]];
     }
+}
+
+// Tell a manager's delegate we're authorized (when-in-use). Called after the app
+// requests permission WHILE faking: our -authorizationStatus hook already reports
+// authorized, so we just nudge the delegate to (re)query and start streaming.
+// Main-thread only, per the delegate contract.
+static void IVNotifyAuthorized(CLLocationManager *mgr) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id<CLLocationManagerDelegate> del = mgr.delegate;
+        if ([del respondsToSelector:@selector(locationManagerDidChangeAuthorization:)]) {
+            [del locationManagerDidChangeAuthorization:mgr];              // iOS 14+
+        }
+        if ([del respondsToSelector:@selector(locationManager:didChangeAuthorizationStatus:)]) {
+            [del locationManager:mgr didChangeAuthorizationStatus:kCLAuthorizationStatusAuthorizedWhenInUse];  // legacy
+        }
+    });
 }
 
 // Reconcile ONE streaming manager against the live active-container state. Main
@@ -186,7 +208,64 @@ static void IVStartStream(CLLocationManager *mgr) {
         }));
     }
 
-    IVLog(@"LocationSpoof installed (getter/start/stop/request/update)");
+    // Authorization surfaces. Without these, an app that has NOT been granted
+    // location permission never calls -startUpdatingLocation, so our fake fix
+    // would never surface (the #1 reason a spoofed location "doesn't show up").
+    // When faking (active container has a location), report authorizedWhenInUse
+    // + services-enabled so the app proceeds to query; otherwise pass through the
+    // real status so the tweak stays transparent.
+
+    // -[CLLocationManager authorizationStatus] — instance property, iOS 14+.
+    Method mAuthI = class_getInstanceMethod(mgr, @selector(authorizationStatus));
+    if (mAuthI) {
+        orig_auth_inst = (CLAuthorizationStatus (*)(id, SEL))method_getImplementation(mAuthI);
+        method_setImplementation(mAuthI, imp_implementationWithBlock(^CLAuthorizationStatus(id _self) {
+            if ([IVLocationSpoof isActive]) return kCLAuthorizationStatusAuthorizedWhenInUse;
+            return orig_auth_inst(_self, @selector(authorizationStatus));
+        }));
+    }
+
+    // +[CLLocationManager authorizationStatus] — deprecated class method, still read.
+    Method mAuthC = class_getClassMethod(mgr, @selector(authorizationStatus));
+    if (mAuthC) {
+        orig_auth_cls = (CLAuthorizationStatus (*)(id, SEL))method_getImplementation(mAuthC);
+        method_setImplementation(mAuthC, imp_implementationWithBlock(^CLAuthorizationStatus(id _self) {
+            if ([IVLocationSpoof isActive]) return kCLAuthorizationStatusAuthorizedWhenInUse;
+            return orig_auth_cls(_self, @selector(authorizationStatus));
+        }));
+    }
+
+    // +[CLLocationManager locationServicesEnabled].
+    Method mSvc = class_getClassMethod(mgr, @selector(locationServicesEnabled));
+    if (mSvc) {
+        orig_services_enabled = (BOOL (*)(id, SEL))method_getImplementation(mSvc);
+        method_setImplementation(mSvc, imp_implementationWithBlock(^BOOL(id _self) {
+            if ([IVLocationSpoof isActive]) return YES;
+            return orig_services_enabled(_self, @selector(locationServicesEnabled));
+        }));
+    }
+
+    // -requestWhenInUseAuthorization / -requestAlwaysAuthorization: when faking,
+    // don't prompt the real system — immediately tell the delegate we're
+    // authorized so the app moves on to querying location.
+    Method mReqW = class_getInstanceMethod(mgr, @selector(requestWhenInUseAuthorization));
+    if (mReqW) {
+        orig_req_wheninuse = (void (*)(id, SEL))method_getImplementation(mReqW);
+        method_setImplementation(mReqW, imp_implementationWithBlock(^(id _self) {
+            if ([IVLocationSpoof isActive]) IVNotifyAuthorized(_self);
+            else orig_req_wheninuse(_self, @selector(requestWhenInUseAuthorization));
+        }));
+    }
+    Method mReqA = class_getInstanceMethod(mgr, @selector(requestAlwaysAuthorization));
+    if (mReqA) {
+        orig_req_always = (void (*)(id, SEL))method_getImplementation(mReqA);
+        method_setImplementation(mReqA, imp_implementationWithBlock(^(id _self) {
+            if ([IVLocationSpoof isActive]) IVNotifyAuthorized(_self);
+            else orig_req_always(_self, @selector(requestAlwaysAuthorization));
+        }));
+    }
+
+    IVLog(@"LocationSpoof installed (getter/start/stop/request/update + authorization)");
 }
 
 + (BOOL)isActive {

@@ -133,7 +133,7 @@ static const CGFloat kIVPad = 18.0;   // shadow padding around the button
 
     // VoiceOver: expose the button as a single, labelled control.
     btn.isAccessibilityElement = YES;
-    btn.accessibilityLabel = @"InstaVault";
+    btn.accessibilityLabel = @"Whamscale";
     btn.accessibilityHint = @"Ouvre la gestion des conteneurs";
 
     [container addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onPan:)]];

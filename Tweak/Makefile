@@ -21,6 +21,7 @@ InstaVault_FILES = \
 	Source/Spoof/IVLocationSpoof.m \
 	Source/UI/IVTheme.m \
 	Source/UI/IVGlass.m \
+	Source/UI/IVActionSheet.m \
 	Source/UI/IVFloatingButton.m \
 	Source/UI/IVPanelVC.m \
 	Source/UI/IVCreateVC.m \

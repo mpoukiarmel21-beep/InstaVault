@@ -1,6 +1,14 @@
 #import "IVContainerStore.h"
 #import "IVPaths.h"
 #import "IVDiagnostics.h"
+#import "IVKeychainHook.h"
+
+// A container's keychain namespace prefix — must match Bootstrap's
+// IVKeychainPrefixForContainer ("IV:<cid>:") so a purge finds the same items
+// the isolation hook wrote.
+static NSString *IVKeychainPrefixForCID(NSString *cid) {
+    return [NSString stringWithFormat:@"IV:%@:", cid];
+}
 
 NSString *const kIVContainersChanged = @"kIVContainersChanged";
 NSString *const kIVActiveChanged = @"kIVActiveChanged";
@@ -235,6 +243,10 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
         [_list addObject:def];
         _activeCID = kIVDefaultCID;
         if (![self persistLocked]) return NO;
+        // Belt-and-suspenders: sweep EVERY namespaced keychain item ("IV:" covers
+        // all containers), catching any whose on-disk record was already lost so
+        // no orphan credential survives a full reset.
+        [IVKeychainHook purgeItemsWithPrefix:@"IV:"];
     } @finally { [_lock unlock]; }
     [self postOnMain:kIVContainersChanged];
     [self postOnMain:kIVActiveChanged];
@@ -249,6 +261,10 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
         NSError *err = nil;
         if (![fm removeItemAtPath:root error:&err]) IVErr(@"delete container data failed %@: %@", cid, err);
     }
+    // Also wipe this container's namespaced keychain items (login/session), or a
+    // deleted container's credentials would linger in the shared keychain and a
+    // future container that happened to reuse the cid could inherit them.
+    [IVKeychainHook purgeItemsWithPrefix:IVKeychainPrefixForCID(cid)];
 }
 
 - (void)postOnMain:(NSString *)name {

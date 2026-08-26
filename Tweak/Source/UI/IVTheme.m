@@ -21,4 +21,32 @@
     return [UIColor colorWithWhite:1.0 alpha:0.35];
 }
 
+#pragma mark - Dark surface palette
+
++ (UIColor *)panelBackground {
+    return [UIColor colorWithRed:0.070 green:0.063 blue:0.110 alpha:1.0];   // #121019
+}
+
++ (UIColor *)elevatedSurface {
+    return [UIColor colorWithRed:0.110 green:0.094 blue:0.188 alpha:1.0];   // #1C1830
+}
+
++ (UIColor *)glassFill {
+    // Translucent enough to see the dark base through it, opaque enough to read
+    // as a solid control. Sits on top of the elevated/base surfaces.
+    return [UIColor colorWithWhite:1.0 alpha:0.10];
+}
+
++ (UIColor *)glassStroke {
+    return [UIColor colorWithWhite:1.0 alpha:0.16];
+}
+
++ (UIColor *)primaryText {
+    return [UIColor colorWithWhite:1.0 alpha:0.95];
+}
+
++ (UIColor *)secondaryText {
+    return [UIColor colorWithWhite:1.0 alpha:0.55];
+}
+
 @end

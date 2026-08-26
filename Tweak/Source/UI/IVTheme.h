@@ -22,6 +22,28 @@ NS_ASSUME_NONNULL_BEGIN
 /// over busy content.
 @property (class, nonatomic, readonly) UIColor *hairline;
 
+#pragma mark - Dark surface palette (menu + action sheet)
+
+/// Deep, violet-tinted near-black — the base background of the dark menu and the
+/// custom action sheet. Reads "pro" and lets the accent and glass fills pop.
+@property (class, nonatomic, readonly) UIColor *panelBackground;
+
+/// A slightly lifted surface for cards/cells sitting on `panelBackground`.
+@property (class, nonatomic, readonly) UIColor *elevatedSurface;
+
+/// Translucent fill for secondary buttons — visible but see-through over the
+/// dark base (the "boutons un peu translucides mais toujours visibles" ask).
+@property (class, nonatomic, readonly) UIColor *glassFill;
+
+/// Hairline stroke around translucent buttons/cards so they keep a crisp edge.
+@property (class, nonatomic, readonly) UIColor *glassStroke;
+
+/// Primary text on the dark surfaces (near-white).
+@property (class, nonatomic, readonly) UIColor *primaryText;
+
+/// Secondary/subtitle text on the dark surfaces (muted).
+@property (class, nonatomic, readonly) UIColor *secondaryText;
+
 @end
 
 NS_ASSUME_NONNULL_END

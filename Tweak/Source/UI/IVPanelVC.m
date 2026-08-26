@@ -2,6 +2,7 @@
 #import "IVCreateVC.h"
 #import "IVMapPickerVC.h"
 #import "IVTheme.h"
+#import "IVActionSheet.h"
 #import "../Core/IVContainer.h"
 #import "../Core/IVContainerStore.h"
 #import "../Spoof/IVDeviceSpoof.h"
@@ -15,13 +16,28 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"InstaVault";
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.title = @"Whamscale";
 
-    // Large-title nav with a purple accent for the bar buttons.
-    self.navigationController.navigationBar.prefersLargeTitles = YES;
+    // Dark violet-tinted surface everywhere; force Dark so system controls
+    // (alerts, text fields, the pushed map/create screens) match.
+    self.view.backgroundColor = IVTheme.panelBackground;
+    self.navigationController.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+
+    // Large-title nav painted with the same dark surface + violet accent.
+    UINavigationBar *bar = self.navigationController.navigationBar;
+    bar.prefersLargeTitles = YES;
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;
-    self.navigationController.navigationBar.tintColor = IVTheme.accent;
+    bar.tintColor = IVTheme.accent;
+
+    UINavigationBarAppearance *ap = [UINavigationBarAppearance new];
+    [ap configureWithOpaqueBackground];
+    ap.backgroundColor = IVTheme.panelBackground;
+    ap.shadowColor = UIColor.clearColor;
+    ap.titleTextAttributes = @{ NSForegroundColorAttributeName: IVTheme.primaryText };
+    ap.largeTitleTextAttributes = @{ NSForegroundColorAttributeName: IVTheme.primaryText };
+    bar.standardAppearance = ap;
+    bar.scrollEdgeAppearance = ap;
+    bar.compactAppearance = ap;
 
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
@@ -32,6 +48,7 @@
 
     self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.table.backgroundColor = UIColor.clearColor;   // let panelBackground show through
     self.table.dataSource = self;
     self.table.delegate = self;
     [self.table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"c"];
@@ -88,18 +105,25 @@
 
     UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
     content.text = c.name;
+    content.textProperties.color = IVTheme.primaryText;
     content.textProperties.font = [UIFont systemFontOfSize:17
                                                     weight:active ? UIFontWeightSemibold : UIFontWeightRegular];
     content.secondaryText = sub;
-    content.secondaryTextProperties.color = UIColor.secondaryLabelColor;
+    content.secondaryTextProperties.color = IVTheme.secondaryText;
     content.secondaryTextProperties.font = [UIFont systemFontOfSize:13];
     // Leading indicator doubles as the "active" marker (filled accent) vs idle.
     content.image = [UIImage systemImageNamed:active ? @"checkmark.circle.fill" : @"circle"];
-    content.imageProperties.tintColor = active ? IVTheme.accent : UIColor.tertiaryLabelColor;
+    content.imageProperties.tintColor = active ? IVTheme.accent : IVTheme.secondaryText;
     content.imageProperties.preferredSymbolConfiguration =
         [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightRegular];
     content.imageToTextPadding = 12.0;
     cell.contentConfiguration = content;
+
+    // Translucent-but-visible glass row over the dark surface.
+    cell.backgroundColor = IVTheme.glassFill;
+    UIView *sel = [UIView new];
+    sel.backgroundColor = IVTheme.elevatedSurface;
+    cell.selectedBackgroundView = sel;
 
     // Consistent "more actions" affordance on every row.
     cell.accessoryType = UITableViewCellAccessoryDetailDisclosureButton;
@@ -121,27 +145,32 @@
 - (void)presentActionsFor:(IVContainer *)c {
     IVContainerStore *store = [IVContainerStore shared];
     BOOL active = [c.cid isEqualToString:store.activeCID];
+    __weak typeof(self) ws = self;
 
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:c.name message:nil
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
+    IVActionSheet *sheet = [[IVActionSheet alloc] initWithTitle:c.name
+                                                        message:active ? @"Conteneur actif" : nil];
 
     if (!active) {
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Activer ce conteneur" style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction *a) { [self activate:c]; }]];
+        [sheet addAction:[IVAction actionWithTitle:@"Activer ce conteneur"
+                                            symbol:@"checkmark.circle.fill"
+                                             style:IVActionStyleAccent
+                                           handler:^{ [ws activate:c]; }]];
     }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Localisation (GPS)" style:UIAlertActionStyleDefault
-                                            handler:^(UIAlertAction *a) { [self editLocation:c]; }]];
+    [sheet addAction:[IVAction actionWithTitle:@"Localisation (GPS)"
+                                        symbol:@"mappin.and.ellipse"
+                                         style:IVActionStyleDefault
+                                       handler:^{ [ws editLocation:c]; }]];
     if (!c.isDefault) {
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Renommer" style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction *a) { [self rename:c]; }]];
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Supprimer" style:UIAlertActionStyleDestructive
-                                                handler:^(UIAlertAction *a) { [self delete:c]; }]];
+        [sheet addAction:[IVAction actionWithTitle:@"Renommer"
+                                            symbol:@"pencil"
+                                             style:IVActionStyleDefault
+                                           handler:^{ [ws rename:c]; }]];
+        [sheet addAction:[IVAction actionWithTitle:@"Supprimer"
+                                            symbol:@"trash"
+                                             style:IVActionStyleDestructive
+                                           handler:^{ [ws delete:c]; }]];
     }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Annuler" style:UIAlertActionStyleCancel handler:nil]];
-
-    sheet.popoverPresentationController.sourceView = self.table;
-    sheet.popoverPresentationController.sourceRect = self.table.bounds;
-    [self presentViewController:sheet animated:YES completion:nil];
+    [sheet presentFrom:self];
 }
 
 - (void)activate:(IVContainer *)c {
@@ -206,6 +235,7 @@
 - (void)createNew {
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:
                                    [[IVCreateVC alloc] initWithContainer:nil]];
+    nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;   // match the dark menu
     [self presentViewController:nav animated:YES completion:nil];
 }
 
@@ -237,13 +267,19 @@
 }
 
 - (UIView *)makeResetFooter {
-    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 72)];
+    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 88)];
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    b.frame = CGRectMake(20, 20, wrap.bounds.size.width - 40, 44);
+    b.frame = CGRectMake(20, 24, wrap.bounds.size.width - 40, 52);
     b.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [b setTitle:@"Tout réinitialiser" forState:UIControlStateNormal];
     [b setTitleColor:UIColor.systemRedColor forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    b.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    // Translucent glass pill so it reads as a deliberate, framed destructive action.
+    b.backgroundColor = IVTheme.glassFill;
+    b.layer.cornerRadius = 16.0;
+    b.layer.cornerCurve = kCACornerCurveContinuous;
+    b.layer.borderWidth = 1.0;
+    b.layer.borderColor = IVTheme.glassStroke.CGColor;
     [b addTarget:self action:@selector(confirmReset) forControlEvents:UIControlEventTouchUpInside];
     [wrap addSubview:b];
     return wrap;

@@ -12,23 +12,23 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : correctifs UI post-test appareil #85 (le bouton
-menu meurt après avoir basculé sur un conteneur qu'on vient de créer ; demande de
-design plus « pro » + meilleure gestion des couleurs). Correctifs appliqués sur
-`feature/v2-build` (commit `44d15eb`), **rebuild CI #86 déclenché** (voir Journal).
+Claude Code (Opus) — 2026-08-26 : lot post-test #86 — (1) **bug prioritaire login
+par conteneur** (compte « Paris » qui tourne sur connexion après un aller-retour via
+« Nice ») : namespacing keychain étendu aux **internet-password** (`kSecAttrServer`),
+pas seulement generic-password ; (2) renommage UI **InstaVault → Whamscale** ; (3)
+menu (`IVPanelVC`) redessiné en **thème sombre** + lignes translucides ; (4) nouvelle
+**feuille d'actions maison** (`IVActionSheet`) sombre à la place de l'`UIAlertController` ;
+(5) modèle d'appareil par conteneur **vérifié** (déjà déterministe, inchangé) ; (6)
+purge keychain sur remove/reset **câblée**. Rebuild CI en cours (voir Journal).
 
 ## Prochaine étape
-**Build CI #86 réussi.** Nouvelle IPA :
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-86/InstaVault.ipa`
-Installer via Sideloadly (cert 7 j) et **re-tester en priorité** : (0) **après avoir
-créé un conteneur PUIS basculé dessus, le bouton menu répond toujours** (bug corrigé
-ce run — la fenêtre n'est masquée qu'une fois la feuille présentée, et jamais si le
-top-VC est occupé) ; (0bis) couleurs cohérentes/« plus pro » (palette IVTheme + halo
-violet) ; (1) pas de crash à l'ouverture ; (2) pas d'erreur Sideloadly ; (3) conteneur
-persiste après fermeture/réouverture ; (4) login persiste (correctif keychain enum —
-mur historique) ; (5) GPS — zoom + recherche ville + le faux fix se met à jour et ne
-fuit pas le vrai GPS. Remonter les résultats pour trancher les éléments différés (purge
-keychain sur remove/reset, hook `sysctl` MIB, UAF `gSpoofedModelC`).
+**Rebuild CI déclenché** après le lot #86. Récupérer l'URL `build-<run>/InstaVault.ipa`
+du run réussi, installer via Sideloadly, puis **re-tester en priorité le bug login** :
+créer un compte dans le conteneur A, en créer/connecter un second dans B, basculer sur B,
+rebasculer sur A → le compte A **doit rester connecté** (plus de « tourne sur connexion »).
+Vérifier aussi : (2) le nom « Whamscale » partout dans l'UI ; (3)/(4) thème sombre +
+feuille d'actions lisibles ; (5) chaque conteneur affiche son propre n° de modèle ;
+(6) « Tout réinitialiser » efface bien tous les conteneurs + leurs identifiants keychain.
 
 ## Blocages / risques
 - Push + build CI **autorisés par l'utilisateur** pour ce build (« compile tout ça
@@ -42,6 +42,58 @@ keychain sur remove/reset, hook `sysctl` MIB, UAF `gSpoofedModelC`).
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-26 — Claude Code (Opus) — fix login par conteneur (keychain internet-password) + Whamscale + menu sombre + IVActionSheet
+Retour test appareil : « conteneur Paris (compte connecté), puis conteneur Nice
+(compte connecté), bascule sur Nice, retour sur Paris → le compte Paris **tourne sur
+connexion** (déconnecté temporairement) ». Attendu : chaque conteneur reste connecté,
+comme une simple réouverture d'app. + demandes UI : renommer en « Whamscale », menu
+sombre à boutons translucides, feuille d'actions plus « pro », isolation du n° de
+modèle, « Tout réinitialiser » fiable.
+
+**(#1) Bug login — cause racine (`IVKeychainHook.m`)**
+Seul le **generic-password** (`kSecAttrService`) était namespacé. Toute donnée de
+session qu'Instagram range dans un **internet-password** (`kSecAttrServer`) était donc
+**partagée entre tous les conteneurs** (dernier écrivain gagne) : se connecter dans un
+2ᵉ conteneur écrasait l'item du 1ᵉʳ → au retour, re-login. Correctif : généraliser le
+namespacing aux deux classes via `IVNamespaceField()` (generic→service, internet→server),
+appliqué sur `SecItemAdd/CopyMatching/Update/Delete` + le chemin d'énumération sans
+champ. Strict sur-ensemble : no-op si l'app n'utilise pas d'internet-password.
+**Non testé sur appareil (mur historique P5) — à valider en priorité.**
+
+**(#6) « Tout réinitialiser » (`IVKeychainHook.m` + `IVContainerStore.m`)**
+Nouvelle `+purgeItemsWithPrefix:` : énumère les deux classes de mot de passe via les
+fonctions **brutes** (non hookées), filtre sur `IV:<cid>:` (ou `IV:` global) et supprime
+par persistent-ref (exact, jamais les items réels non préfixés). Câblée dans
+`deleteContainerDataLocked:` (remove + boucle de resetAll) et un balayage `IV:` en fin
+de `resetAll` pour les orphelins.
+
+**(#2) Renommage UI → « Whamscale »**
+`IVPanelVC` titre + `IVFloatingButton` accessibilityLabel. Identifiants internes,
+répertoire de contrôle `~/Documents/InstaVault/` et préfixe keychain `IV:` **inchangés**
+(sinon on orpheline les données existantes).
+
+**(#3) Menu sombre (`IVPanelVC.m`)**
+Fond `IVTheme.panelBackground`, `overrideUserInterfaceStyle = Dark` sur la nav (cascade
+alertes + écrans poussés), `UINavigationBarAppearance` opaque sombre, lignes en
+`glassFill` translucide + texte `primaryText`/`secondaryText`, footer « Tout réinitialiser »
+en pilule glass rouge. Nav de création forcée en Dark aussi.
+
+**(#4) Feuille d'actions maison (`IVActionSheet.h/.m`, nouveau — ajouté au Makefile)**
+Remplace l'`UIAlertControllerStyleActionSheet`. Carte sombre glissant du bas sur un
+fond assombri tappable ; boutons stylés par `IVActionStyle` (Accent = violet plein,
+Destructive = rouge sur glass, Default = glass + liseré), Cancel auto-ajouté ; les
+handlers s'exécutent **après** la disparition (une action qui présente sa propre alerte
+ne lutte pas contre une feuille encore en fermeture). Câblée dans `presentActionsFor:`
+avec symboles SF (Activer→accent, Localisation, Renommer, Supprimer→destructive).
+
+**(#5) N° de modèle par conteneur (`IVDeviceSpoof.m`) — vérifié, inchangé**
+Déjà déterministe par cid (SHA256 → pick dans `availableModels` iPhone 11→16) + hooks
+`hw.machine` (sysctlbyname/uname) + swizzle IDFV/IDFA. Conteneur par défaut = appareil
+réel. Répond à « chaque conteneur = un vrai iPhone indépendant ». Aucun changement.
+
+Build local impossible (Windows) → **rebuild CI** sur `feature/v2-build` (autorisé).
+
 
 ### 2026-08-26 — Claude Code (Opus) — fix « bouton menu mort après bascule de conteneur » + palette centralisée (IVTheme)
 Retour test appareil (run #85) : « une fois que j'ai créé le container et cliqué sur

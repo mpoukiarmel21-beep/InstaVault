@@ -15,73 +15,91 @@ static OSStatus (*orig_SecItemDelete)(CFDictionaryRef) = NULL;
 
 #pragma mark - Prefix helpers
 
-static NSString *IVPrefixed(NSString *service) {
-    if (![service isKindOfClass:[NSString class]]) return gPrefix;   // no service -> bare namespace
-    if ([service hasPrefix:gPrefix]) return service;                 // already prefixed
-    return [gPrefix stringByAppendingString:service];
+static NSString *IVPrefixed(NSString *value) {
+    if (![value isKindOfClass:[NSString class]]) return gPrefix;     // no value -> bare namespace
+    if ([value hasPrefix:gPrefix]) return value;                     // already prefixed
+    return [gPrefix stringByAppendingString:value];
 }
 
-static NSString *IVStripped(NSString *service) {
-    if ([service isKindOfClass:[NSString class]] && [service hasPrefix:gPrefix]) {
-        return [service substringFromIndex:gPrefix.length];
+static NSString *IVStripped(NSString *value) {
+    if ([value isKindOfClass:[NSString class]] && [value hasPrefix:gPrefix]) {
+        return [value substringFromIndex:gPrefix.length];
     }
-    return service;
+    return value;
 }
 
-// YES only for generic-password queries — the ONE keychain class where
-// kSecAttrService is a valid primary key. Injecting a service into any other
-// class (internet passwords, keys, certificates, identities) matches nothing on
-// read and is ignored/rejected on write, i.e. it would BREAK a legitimate
-// Instagram query in a non-default container without ever isolating anything.
-// So we namespace generic-password items (where Instagram keeps its account and
-// session state) and pass every other class straight through, un-isolated. This
-// is strictly safer than blanket-injecting: for non-generic classes the old
-// behaviour could not isolate them anyway — it only corrupted the query.
-static BOOL IVQueryIsGenericPassword(NSDictionary *m) {
+// The keychain primary-key attribute we namespace for a query's class:
+//   • generic-password  -> kSecAttrService  (the service is a primary key here)
+//   • internet-password -> kSecAttrServer   (the host/server is the primary key)
+// Any other class (keys, certificates, identities) returns NULL and passes
+// through untouched: kSecAttrService/kSecAttrServer are NOT primary keys there,
+// so injecting one matches nothing on read and is rejected on write — it would
+// only corrupt a legitimate query without ever isolating anything.
+//
+// Namespacing BOTH password classes (not just generic-password, as the first
+// cut did) is what stops one container's login from clobbering another's: an
+// app that keeps any session material in an internet-password item used to
+// SHARE that item across every container (last writer wins), so logging into a
+// 2nd account and returning to the 1st found the 2nd's shared item and forced a
+// re-login. Isolating kSecAttrServer too closes that leak; it is a strict
+// superset — a no-op for apps that use no internet-password items.
+static CFStringRef IVNamespaceField(NSDictionary *m) {
     id cls = m[(__bridge id)kSecClass];
-    return cls != nil && [cls isEqual:(__bridge id)kSecClassGenericPassword];
+    if (cls == nil) return NULL;
+    if ([cls isEqual:(__bridge id)kSecClassGenericPassword])  return kSecAttrService;
+    if ([cls isEqual:(__bridge id)kSecClassInternetPassword]) return kSecAttrServer;
+    return NULL;
 }
 
 // A query that identifies its item by an explicit reference — a persistent ref
 // (kSecValuePersistentRef) or an explicit item list (kSecMatchItemList) — already
 // targets one exact item. That reference could only have been handed back by a
 // prior query that WAS namespaced, so it is container-safe as-is. Forcing a
-// kSecAttrService constraint onto such a query is actively harmful: the stored
-// item's service is the *namespaced* string, not the bare prefix we would inject,
-// so the added constraint filters the referenced item straight out and the lookup
+// field constraint onto such a query is actively harmful: the stored item's
+// field is the *namespaced* string, not the bare prefix we would inject, so the
+// added constraint filters the referenced item straight out and the lookup
 // fails. Detect these and pass the query through untouched.
 static BOOL IVQueryHasExplicitRef(NSDictionary *m) {
     return m[(__bridge id)kSecValuePersistentRef] != nil ||
            m[(__bridge id)kSecMatchItemList] != nil;
 }
 
-// Returns a retained copy of `query` with kSecAttrService namespaced.
-// When `injectWhenAbsent` is YES and the query has no service, a bare prefix is
-// set — used by Add/Update/Delete so a service-less item is still isolated per
-// container. Reads never call this with a missing service (serviceless
-// enumeration is handled specially in iv_SecItemCopyMatching). Non-generic or
-// ref-keyed queries are returned unchanged (see the predicates above).
+// Returns a retained copy of `query` with its namespace field prefixed.
+// When `injectWhenAbsent` is YES and the field is missing, a bare prefix is set
+// — used by Add/Update/Delete so a field-less item is still isolated per
+// container. Reads never call this with a missing field (field-less enumeration
+// is handled specially in iv_SecItemCopyMatching). Non-namespaced (see
+// IVNamespaceField) or ref-keyed queries are returned unchanged.
 static CFDictionaryRef IVCopyNamespacedQuery(CFDictionaryRef query, BOOL injectWhenAbsent) {
     NSMutableDictionary *m = query ? [(__bridge NSDictionary *)query mutableCopy] : [NSMutableDictionary new];
-    if (!IVQueryIsGenericPassword(m) || IVQueryHasExplicitRef(m)) {
-        return (__bridge_retained CFDictionaryRef)m;   // non-generic OR ref-keyed: leave untouched
+    CFStringRef field = IVNamespaceField(m);
+    if (field == NULL || IVQueryHasExplicitRef(m)) {
+        return (__bridge_retained CFDictionaryRef)m;   // not namespaced OR ref-keyed: untouched
     }
-    id svc = m[(__bridge id)kSecAttrService];
-    if ([svc isKindOfClass:[NSString class]]) {
-        m[(__bridge id)kSecAttrService] = IVPrefixed(svc);
+    id val = m[(__bridge id)field];
+    if ([val isKindOfClass:[NSString class]]) {
+        m[(__bridge id)field] = IVPrefixed(val);
     } else if (injectWhenAbsent) {
-        m[(__bridge id)kSecAttrService] = gPrefix;
+        m[(__bridge id)field] = gPrefix;
     }
     return (__bridge_retained CFDictionaryRef)m;
 }
 
-// Rewrites service in a returned attribute dictionary back to the app-visible
-// (un-prefixed) value. Returns a retained CF dict, or NULL to keep original.
+// Strip our prefix from BOTH namespaceable fields of a returned attribute dict
+// (only one is ever present per item), rewriting them to the app-visible value.
+static void IVStripFieldsInPlace(NSMutableDictionary *m) {
+    id svc = m[(__bridge id)kSecAttrService];
+    if ([svc isKindOfClass:[NSString class]]) m[(__bridge id)kSecAttrService] = IVStripped(svc);
+    id srv = m[(__bridge id)kSecAttrServer];
+    if ([srv isKindOfClass:[NSString class]]) m[(__bridge id)kSecAttrServer] = IVStripped(srv);
+}
+
+// Rewrites the namespaced field(s) in a returned attribute dictionary back to
+// the app-visible value. Returns the (possibly rewritten) object.
 static id IVStripResultObject(id obj) {
     if ([obj isKindOfClass:[NSDictionary class]]) {
         NSMutableDictionary *d = [obj mutableCopy];
-        id svc = d[(__bridge id)kSecAttrService];
-        if ([svc isKindOfClass:[NSString class]]) d[(__bridge id)kSecAttrService] = IVStripped(svc);
+        IVStripFieldsInPlace(d);
         return d;
     }
     return obj;
@@ -89,15 +107,14 @@ static id IVStripResultObject(id obj) {
 
 // Reshape one discovered attribute dict back into the exact return shape the
 // caller's ORIGINAL query asked for. We force kSecReturnAttributes on the
-// discovery query (so every result carries its kSecAttrService for prefix
-// filtering); this undoes that, handing back raw data / a persistent-ref / a
-// value dict / the attribute dict as appropriate, with our prefix stripped.
-// Returns nil when the caller requested no return payload at all.
+// discovery query (so every result carries its namespace field for filtering);
+// this undoes that, handing back raw data / a persistent-ref / a value dict /
+// the attribute dict as appropriate, with our prefix stripped. Returns nil when
+// the caller requested no return payload at all.
 static id IVReshapeItem(NSDictionary *d, BOOL wantData, BOOL wantAttrs,
                         BOOL wantPRef, BOOL wantRef) {
     NSMutableDictionary *m = [d mutableCopy];
-    id svc = m[(__bridge id)kSecAttrService];
-    if ([svc isKindOfClass:[NSString class]]) m[(__bridge id)kSecAttrService] = IVStripped(svc);
+    IVStripFieldsInPlace(m);
 
     if (wantAttrs) {
         // Caller wanted attributes: Security already merged any requested value
@@ -124,8 +141,8 @@ static id IVReshapeItem(NSDictionary *d, BOOL wantData, BOOL wantAttrs,
 
 #pragma mark - Hooked functions
 
-// WRITE: namespace the item's service (inject a bare prefix when absent so
-// service-less items are still isolated per container), then strip the prefix
+// WRITE: namespace the item's field (inject a bare prefix when absent so
+// field-less items are still isolated per container), then strip the prefix
 // from any returned attributes.
 static OSStatus iv_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
     CFDictionaryRef q = IVCopyNamespacedQuery(attributes, YES);
@@ -143,31 +160,32 @@ static OSStatus iv_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
 
 // READ: scope the query to THIS container without ever leaking another's item.
 //
-//  • Non-generic-password or explicit-ref queries: passthrough (see the query
-//    predicates above) — nothing to isolate.
-//  • Generic-password read WITH a service: prefix it and let the keychain scope
-//    the match exactly; strip the prefix back out of any returned attributes.
-//  • Generic-password read WITHOUT a service (an enumeration — how Instagram
-//    rebuilds its multi-account list on relaunch): we must NOT force an exact
-//    bare-prefix service match (the old bug — it could only ever match an item
-//    literally named "IV:<cid>:", so items written WITH a service, i.e. the
-//    login/session items, were invisible → logged out on reopen). Instead we
-//    discover across ALL services (forcing kSecReturnAttributes so each result
-//    carries its service, and kSecMatchLimitAll), keep only the items whose
-//    service carries THIS container's prefix, and hand them back in the caller's
-//    requested shape. This finds our own items (bare-prefix AND service-keyed)
-//    and still never surfaces another container's item.
+//  • Non-namespaced or explicit-ref queries: passthrough (see IVNamespaceField
+//    / IVQueryHasExplicitRef) — nothing to isolate.
+//  • Password read WITH its field set: prefix it and let the keychain scope the
+//    match exactly; strip the prefix back out of any returned attributes.
+//  • Password read WITHOUT its field (an enumeration — how an app rebuilds its
+//    multi-account list on relaunch): we must NOT force an exact bare-prefix
+//    match (the old bug — it could only ever match an item literally named
+//    "IV:<cid>:", so items written WITH a service/server, i.e. the login/session
+//    items, were invisible → logged out on reopen). Instead we discover across
+//    ALL items of that class (forcing kSecReturnAttributes so each result
+//    carries its field, and kSecMatchLimitAll), keep only the items whose field
+//    carries THIS container's prefix, and hand them back in the caller's
+//    requested shape. Finds our own items (bare-prefix AND field-keyed) and
+//    still never surfaces another container's item.
 static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result) {
     NSDictionary *q = query ? (__bridge NSDictionary *)query : nil;
 
     // Passthrough for everything we don't namespace.
-    if (!gPrefix || !IVQueryIsGenericPassword(q) || IVQueryHasExplicitRef(q)) {
+    CFStringRef field = IVNamespaceField(q);
+    if (!gPrefix || field == NULL || IVQueryHasExplicitRef(q)) {
         return orig_SecItemCopyMatching(query, result);
     }
 
-    id svc = q[(__bridge id)kSecAttrService];
-    if ([svc isKindOfClass:[NSString class]]) {
-        // Service present: prefix it, keychain scopes the match, strip on return.
+    id fv = q[(__bridge id)field];
+    if ([fv isKindOfClass:[NSString class]]) {
+        // Field present: prefix it, keychain scopes the match, strip on return.
         CFDictionaryRef nq = IVCopyNamespacedQuery(query, NO);
         OSStatus st = orig_SecItemCopyMatching(nq, result);
         CFRelease(nq);
@@ -189,7 +207,7 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
         return st;
     }
 
-    // Serviceless enumeration: discover across all services, filter by prefix.
+    // Field-less enumeration: discover across all items, filter by prefix.
     BOOL wantData  = [q[(__bridge id)kSecReturnData] boolValue];
     BOOL wantAttrs = [q[(__bridge id)kSecReturnAttributes] boolValue];
     BOOL wantPRef  = [q[(__bridge id)kSecReturnPersistentRef] boolValue];
@@ -199,7 +217,7 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
                    ([limit isKindOfClass:[NSNumber class]] && [limit integerValue] != 1);
 
     NSMutableDictionary *dq = [q mutableCopy];
-    dq[(__bridge id)kSecReturnAttributes] = (__bridge id)kCFBooleanTrue;   // need each service
+    dq[(__bridge id)kSecReturnAttributes] = (__bridge id)kCFBooleanTrue;   // need each field
     dq[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;      // scan every item
 
     CFTypeRef raw = NULL;
@@ -214,7 +232,7 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
     if ([(__bridge id)raw isKindOfClass:[NSArray class]]) {
         for (id item in (__bridge NSArray *)raw) {
             if (![item isKindOfClass:[NSDictionary class]]) continue;
-            id s = ((NSDictionary *)item)[(__bridge id)kSecAttrService];
+            id s = ((NSDictionary *)item)[(__bridge id)field];
             if ([s isKindOfClass:[NSString class]] && [s hasPrefix:gPrefix]) {
                 matchCount++;
                 id shaped = IVReshapeItem(item, wantData, wantAttrs, wantPRef, wantRef);
@@ -233,14 +251,19 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
 }
 
 // UPDATE: namespace both the match query and, if the update payload sets a new
-// service, the payload too. injectWhenAbsent=YES keeps symmetry with Add so a
-// service-less item added earlier is found by the bare prefix.
+// field value, the payload too. injectWhenAbsent=YES keeps symmetry with Add so
+// a field-less item added earlier is found by the bare prefix.
 static OSStatus iv_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
     CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
     NSMutableDictionary *upd = attributesToUpdate
         ? [(__bridge NSDictionary *)attributesToUpdate mutableCopy] : nil;
-    id newSvc = upd[(__bridge id)kSecAttrService];
-    if ([newSvc isKindOfClass:[NSString class]]) upd[(__bridge id)kSecAttrService] = IVPrefixed(newSvc);
+    // The payload's item is the query's item, so namespace whichever field the
+    // query's class uses if the payload sets a new value for it.
+    CFStringRef field = IVNamespaceField(query ? (__bridge NSDictionary *)query : nil);
+    if (field != NULL) {
+        id newVal = upd[(__bridge id)field];
+        if ([newVal isKindOfClass:[NSString class]]) upd[(__bridge id)field] = IVPrefixed(newVal);
+    }
     CFDictionaryRef a = upd ? (__bridge_retained CFDictionaryRef)upd : attributesToUpdate;
 
     OSStatus st = orig_SecItemUpdate(q, a);
@@ -250,13 +273,26 @@ static OSStatus iv_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attribut
 }
 
 // DELETE: namespace the query (inject a bare prefix when absent). This scopes a
-// service-less delete to THIS container's bare-prefix items and never touches
-// other containers' service-keyed items — a deliberately safe trade-off.
+// field-less delete to THIS container's bare-prefix items and never touches
+// other containers' field-keyed items — a deliberately safe trade-off.
 static OSStatus iv_SecItemDelete(CFDictionaryRef query) {
     CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
     OSStatus st = orig_SecItemDelete(q);
     CFRelease(q);
     return st;
+}
+
+#pragma mark - Raw (un-hooked) keychain access for maintenance
+
+// Purge/enumeration helpers must reach the REAL keychain functions, bypassing
+// our own namespacing. When hooks are installed (active non-default container)
+// the saved originals are non-NULL; otherwise (default container / hooks never
+// bound) fall back to the real Security symbols directly.
+static OSStatus IVRawCopyMatching(CFDictionaryRef q, CFTypeRef *r) {
+    return orig_SecItemCopyMatching ? orig_SecItemCopyMatching(q, r) : SecItemCopyMatching(q, r);
+}
+static OSStatus IVRawDelete(CFDictionaryRef q) {
+    return orig_SecItemDelete ? orig_SecItemDelete(q) : SecItemDelete(q);
 }
 
 #pragma mark - Install
@@ -288,6 +324,47 @@ static OSStatus iv_SecItemDelete(CFDictionaryRef query) {
     }
     IVLog(@"Keychain: hooks installed, prefix=%@", gPrefix);
     return YES;
+}
+
+// Delete every namespaced password item whose service/server carries `prefix`.
+// Used on container remove (prefix "IV:<cid>:") and global reset (prefix "IV:")
+// so a wiped container leaves no orphan login/session material behind in the
+// shared keychain. Enumerates both password classes via the RAW functions (so
+// our own namespacing never re-scopes the sweep), matches on either namespace
+// field, and deletes by persistent ref — an exact, class-agnostic delete that
+// can only hit the one item we already matched. Never touches un-prefixed real
+// items (the default container's own login). Returns the count deleted.
++ (NSInteger)purgeItemsWithPrefix:(NSString *)prefix {
+    if (prefix.length == 0) return 0;
+    NSInteger deleted = 0;
+    NSArray *classes = @[ (__bridge id)kSecClassGenericPassword,
+                          (__bridge id)kSecClassInternetPassword ];
+    for (id cls in classes) {
+        NSDictionary *q = @{ (__bridge id)kSecClass:               cls,
+                             (__bridge id)kSecMatchLimit:          (__bridge id)kSecMatchLimitAll,
+                             (__bridge id)kSecReturnAttributes:    (__bridge id)kCFBooleanTrue,
+                             (__bridge id)kSecReturnPersistentRef: (__bridge id)kCFBooleanTrue };
+        CFTypeRef raw = NULL;
+        OSStatus st = IVRawCopyMatching((__bridge CFDictionaryRef)q, &raw);
+        if (st != errSecSuccess || !raw) { if (raw) CFRelease(raw); continue; }
+        if ([(__bridge id)raw isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in (__bridge NSArray *)raw) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                id svc = item[(__bridge id)kSecAttrService];
+                id srv = item[(__bridge id)kSecAttrServer];
+                BOOL match = ([svc isKindOfClass:[NSString class]] && [svc hasPrefix:prefix]) ||
+                             ([srv isKindOfClass:[NSString class]] && [srv hasPrefix:prefix]);
+                if (!match) continue;
+                id pref = item[(__bridge id)kSecValuePersistentRef];
+                if (!pref) continue;
+                NSDictionary *del = @{ (__bridge id)kSecValuePersistentRef: pref };
+                if (IVRawDelete((__bridge CFDictionaryRef)del) == errSecSuccess) deleted++;
+            }
+        }
+        CFRelease(raw);
+    }
+    IVLog(@"Keychain: purged %ld item(s) with prefix=%@", (long)deleted, prefix);
+    return deleted;
 }
 
 @end

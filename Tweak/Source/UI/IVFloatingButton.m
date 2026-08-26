@@ -20,30 +20,38 @@
 
 #pragma mark - Top view controller (present on the app's key window)
 
+/// Find a controller to present the panel on. Prefer the foreground scene's key
+/// window, but never return nil just because no window reports isKeyWindow — some
+/// hosts leave no window key, which used to make the tap silently do nothing.
 static UIViewController *IVTopViewController(void) {
-    UIWindow *key = nil;
+    UIWindow *best = nil;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
         for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-            if (w.isKeyWindow && ![w isKindOfClass:[IVOverlayWindow class]]) { key = w; break; }
+            if ([w isKindOfClass:[IVOverlayWindow class]] || w.isHidden) continue;
+            if (w.isKeyWindow) { best = w; break; }
+            if (!best) best = w;   // fallback: first visible non-overlay window
         }
-        if (key) break;
+        if (best.isKeyWindow) break;
     }
-    UIViewController *vc = key.rootViewController;
-    while (vc.presentedViewController) vc = vc.presentedViewController;
+    UIViewController *vc = best.rootViewController;
+    while (vc.presentedViewController && !vc.presentedViewController.isBeingDismissed) {
+        vc = vc.presentedViewController;
+    }
     return vc;
 }
 
 #pragma mark - Floating button
 
 static NSString *const kIVBtnCenterKey = @"IVFloatingButtonCenter";
-static const CGFloat kIVButtonSize = 58.0;
-static const CGFloat kIVPad = 16.0;   // shadow padding around the button
+static const CGFloat kIVButtonSize = 60.0;
+static const CGFloat kIVPad = 18.0;   // shadow padding around the button
 
 @interface IVFloatingButton ()
 @property (nonatomic, strong) IVOverlayWindow *window;
-@property (nonatomic, strong) UIView *container;   // button container (live area)
+@property (nonatomic, strong) UIView *container;      // button container (live area)
+@property (nonatomic, weak)   UIViewController *presentedNav;   // guard double-present
 @end
 
 @implementation IVFloatingButton
@@ -83,47 +91,54 @@ static const CGFloat kIVPad = 16.0;   // shadow padding around the button
 
     UIView *container = [[UIView alloc] initWithFrame:CGRectMake(kIVPad, kIVPad, kIVButtonSize, kIVButtonSize)];
     container.layer.shadowColor = UIColor.blackColor.CGColor;
-    container.layer.shadowOpacity = 0.35;
-    container.layer.shadowRadius = 8.0;
-    container.layer.shadowOffset = CGSizeMake(0, 3);
+    container.layer.shadowOpacity = 0.28;
+    container.layer.shadowRadius = 10.0;
+    container.layer.shadowOffset = CGSizeMake(0, 4);
     // Explicit circular shadow path: without it the layer derives a rectangular
     // shadow from the (square) bounds, so a round button casts a square shadow.
     container.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:container.bounds
                                                            cornerRadius:kIVButtonSize / 2.0].CGPath;
 
+    // Glass background — NON-interactive and touch-transparent, so the button on
+    // top always receives the tap. An interactive UIGlassEffect installs its own
+    // gesture/interaction that could swallow the tap (the old "rien ne se passe").
     UIVisualEffectView *glass = [IVGlass glassViewWithCornerRadius:kIVButtonSize / 2.0
-                                                              tint:UIColor.systemPurpleColor
-                                                       interactive:YES];
+                                                              tint:[UIColor colorWithRed:0.46 green:0.29 blue:0.94 alpha:1.0]
+                                                       interactive:NO];
     glass.frame = container.bounds;
     glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    glass.userInteractionEnabled = NO;
+    // Hairline edge so the glass reads as a crisp disc over busy content.
+    glass.layer.borderWidth = 0.5;
+    glass.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
     [container addSubview:glass];
 
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"square.stack.3d.up.fill"]];
-    icon.tintColor = UIColor.whiteColor;
-    icon.contentMode = UIViewContentModeScaleAspectFit;
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    [glass.contentView addSubview:icon];
-    [NSLayoutConstraint activateConstraints:@[
-        [icon.centerXAnchor constraintEqualToAnchor:glass.contentView.centerXAnchor],
-        [icon.centerYAnchor constraintEqualToAnchor:glass.contentView.centerYAnchor],
-        [icon.widthAnchor constraintEqualToConstant:26.0],
-        [icon.heightAnchor constraintEqualToConstant:26.0],
-    ]];
+    // The real interactive layer: a UIButton reliably turns a stationary touch
+    // into an action while coexisting with the drag pan on the container.
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.frame = container.bounds;
+    btn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    UIImageSymbolConfiguration *cfg =
+        [UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightSemibold];
+    UIImage *icon = [[UIImage systemImageNamed:@"square.stack.3d.up.fill" withConfiguration:cfg]
+                        imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    [btn setImage:icon forState:UIControlStateNormal];
+    btn.tintColor = UIColor.whiteColor;
+    btn.adjustsImageWhenHighlighted = NO;
+    [btn addTarget:self action:@selector(onTap) forControlEvents:UIControlEventTouchUpInside];
+    [container addSubview:btn];
+
+    // VoiceOver: expose the button as a single, labelled control.
+    btn.isAccessibilityElement = YES;
+    btn.accessibilityLabel = @"InstaVault";
+    btn.accessibilityHint = @"Ouvre la gestion des conteneurs";
+
+    [container addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onPan:)]];
 
     [root.view addSubview:container];
     w.liveView = container;
     self.window = w;
     self.container = container;
-
-    // VoiceOver: expose the button as a single, labelled control. Without this
-    // the glass container is invisible to assistive tech.
-    container.isAccessibilityElement = YES;
-    container.accessibilityLabel = @"InstaVault";
-    container.accessibilityHint = @"Ouvre la gestion des conteneurs";
-    container.accessibilityTraits = UIAccessibilityTraitButton;
-
-    [container addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onPan:)]];
-    [container addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onTap:)]];
 
     w.hidden = NO;
     [self restorePosition];
@@ -205,7 +220,14 @@ static const CGFloat kIVPad = 16.0;   // shadow padding around the button
 
 #pragma mark - Tap → panel
 
-- (void)onTap:(UITapGestureRecognizer *)g {
+- (void)onTap {
+    // Already showing the panel? Ignore (avoids double-present).
+    if (self.presentedNav && self.presentedNav.presentingViewController) return;
+
+    UIViewController *top = IVTopViewController();
+    if (!top) return;
+
+    // Press feedback (skipped under Reduce Motion).
     if (!UIAccessibilityIsReduceMotionEnabled()) {
         [UIView animateWithDuration:0.08 animations:^{
             self.container.transform = CGAffineTransformMakeScale(0.9, 0.9);
@@ -214,10 +236,16 @@ static const CGFloat kIVPad = 16.0;   // shadow padding around the button
         }];
     }
 
-    UIViewController *top = IVTopViewController();
-    if (!top) return;
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:[IVPanelVC new]];
+    IVPanelVC *panel = [IVPanelVC new];
+    __weak typeof(self) ws = self;
+    panel.onClose = ^{ ws.window.hidden = NO; };   // restore the button when the menu closes
+
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:panel];
     nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    self.presentedNav = nav;
+
+    // Hide the button while the menu is up so it doesn't float over the sheet.
+    self.window.hidden = YES;
     [top presentViewController:nav animated:YES completion:nil];
 }
 

@@ -12,20 +12,20 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : correctifs pré-build appliqués (login keychain,
-fuite/gel GPS, geste carte, entitlements), commit du tree v2 sur `feature/v2-build`
-et déclenchement du build CI (autorisé par l'utilisateur). IPA source = asset
-`INSTAGRAM.ipa` du release `v1.0-ipa`.
+Claude Code (Opus) — 2026-08-26 : correctifs UI post-test appareil #84 (le tap du
+bouton flottant n'ouvrait rien ; bouton + menu jugés mal designés). Correctifs
+appliqués sur `feature/v2-build`, rebuild CI en cours.
 
 ## Prochaine étape
-**Build CI OK — run #84 réussi.** IPA prête :
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-84/InstaVault.ipa`
-Installer via Sideloadly (cert 7 j) puis **test appareil prioritaire** : (1) pas de
-crash à l'ouverture ; (2) pas d'erreur Sideloadly ; (3) conteneur persiste après
-fermeture/réouverture ; (4) login persiste (le correctif keychain enum doit être
-validé ici — mur historique) ; (5) GPS — zoom + recherche ville + le faux fix se met
-à jour et ne fuit pas le vrai GPS. Remonter les résultats pour trancher les éléments
-différés (purge keychain sur remove/reset, hook `sysctl` MIB, UAF `gSpoofedModelC`).
+**Rebuild CI en cours** (correctifs tap + design). Quand le run réussit, installer
+la nouvelle IPA via Sideloadly et **re-tester en priorité** : (0) **le tap du bouton
+ouvre bien le menu** (bug corrigé ce run — UIButton réel + glass non-interactif +
+recherche du top-VC robuste) ; (1) pas de crash à l'ouverture ; (2) pas d'erreur
+Sideloadly ; (3) conteneur persiste après fermeture/réouverture ; (4) login persiste
+(correctif keychain enum — mur historique) ; (5) GPS — zoom + recherche ville + le
+faux fix se met à jour et ne fuit pas le vrai GPS. Remonter les résultats pour
+trancher les éléments différés (purge keychain sur remove/reset, hook `sysctl` MIB,
+UAF `gSpoofedModelC`).
 
 ## Blocages / risques
 - Push + build CI **autorisés par l'utilisateur** pour ce build (« compile tout ça
@@ -39,6 +39,42 @@ différés (purge keychain sur remove/reset, hook `sysctl` MIB, UAF `gSpoofedMod
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-26 — Claude Code (Opus) — fix tap bouton flottant + redesign bouton/menu
+Retour test appareil (run #84) : « quand j'appuie sur le bouton rien ne se passe » +
+bouton et menu « très mal designés ». Deux problèmes traités.
+
+**Bug fonctionnel — le tap n'ouvrait rien (`IVFloatingButton.m`)**
+Deux causes plausibles éliminées d'un coup (pas de build local pour départager) :
+1. *Le glass interactif avalait le toucher.* Le bouton était une `UIView` nue avec un
+   `UITapGestureRecognizer`, posée sur un `UIGlassEffect` **interactif** — dont
+   l'interaction interne pouvait consommer le tap (et le pan). Corrigé : le glass
+   passe en `interactive:NO` + `userInteractionEnabled = NO`, et un **vrai
+   `UIButton`** (image SF Symbol) posé au-dessus gère le tap (`touchUpInside`). Le
+   pan de drag reste sur le conteneur : tap immobile → action ; mouvement → drag
+   (le pan annule le tracking du bouton). Plus de conflit de gestes.
+2. *`IVTopViewController()` renvoyait nil.* Il exigeait une fenêtre `isKeyWindow` ;
+   si aucune fenêtre n'était clé, `onTap` sortait en silence. Corrigé : fallback sur
+   la 1re fenêtre visible non-overlay de la scène foreground → ne renvoie jamais nil
+   quand l'app est au premier plan.
+Ajouts : garde anti-double-présentation (`presentedNav.presentingViewController`),
+le bouton se **masque** pendant l'affichage du menu et **réapparaît** à sa fermeture
+via un callback `onClose` (posé sur `IVPanelVC`, déclenché seulement sur vraie
+fermeture — `isBeingDismissed` — pas sur un push enfant comme la carte).
+
+**Design bouton (`IVFloatingButton.m`)** : disque 60pt, glass violet (0.46/0.29/0.94),
+liseré blanc 0.5pt pour détacher le disque du contenu, ombre circulaire plus douce
+(radius 10, opacité 0.28), icône `square.stack.3d.up.fill` semibold 24pt blanche.
+
+**Design menu (`IVPanelVC`)** : grand titre (`prefersLargeTitles` + large display),
+barre teintée violet, cellules modernes `UIListContentConfiguration` (sous-titre 13pt,
+padding image 12pt) avec **indicateur d'activation en tête de ligne** (`checkmark.circle.fill`
+violet plein si actif, `circle` gris sinon) et accessoire « … » (detail disclosure)
+homogène sur toutes les lignes. Logique du panel inchangée.
+
+Fichiers : `IVFloatingButton.m`, `IVPanelVC.h` (+`onClose`), `IVPanelVC.m`. Build local
+impossible (Windows) → **rebuild CI** sur `feature/v2-build`, IPA source `INSTAGRAM.ipa`
+(release `v1.0-ipa`, URL directe).
 
 ### 2026-08-26 — Claude Code (Opus) — commit tree v2 + déclenchement build CI
 Sur demande utilisateur explicite (« Vas-y, tu peux compiler tout ça sur GitHub

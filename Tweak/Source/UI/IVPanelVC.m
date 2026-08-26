@@ -17,6 +17,11 @@
     self.title = @"InstaVault";
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
 
+    // Large-title nav with a purple accent for the bar buttons.
+    self.navigationController.navigationBar.prefersLargeTitles = YES;
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;
+    self.navigationController.navigationBar.tintColor = UIColor.systemPurpleColor;
+
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
                                                       target:self action:@selector(close)];
@@ -37,6 +42,17 @@
                                                    name:n object:nil];
     }
     [self reload];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    // Fire onClose only on a real dismissal (Close / swipe-down), never when a
+    // child (map picker) is pushed on top — so the floating button reappears at
+    // the right moment.
+    if ((self.isBeingDismissed || self.navigationController.isBeingDismissed) && self.onClose) {
+        self.onClose();
+        self.onClose = nil;
+    }
 }
 
 - (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
@@ -61,21 +77,31 @@
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-                                                   reuseIdentifier:@"c"];
+    UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:@"c" forIndexPath:ip];
     IVContainer *c = self.items[ip.row];
     BOOL active = [c.cid isEqualToString:[IVContainerStore shared].activeCID];
 
-    cell.textLabel.text = c.name;
-    cell.textLabel.font = [UIFont systemFontOfSize:17 weight:active ? UIFontWeightSemibold : UIFontWeightRegular];
-
     NSString *model = [IVDeviceSpoof effectiveModelForContainer:c];
     NSMutableString *sub = [NSMutableString stringWithString:c.isDefault ? @"Réel (non isolé)" : model];
-    if (c.hasLocation && c.locationName.length) [sub appendFormat:@" · 📍 %@", c.locationName];
-    cell.detailTextLabel.text = sub;
-    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+    if (c.hasLocation && c.locationName.length) [sub appendFormat:@"  ·  📍 %@", c.locationName];
 
-    cell.accessoryType = active ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryDetailDisclosureButton;
+    UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
+    content.text = c.name;
+    content.textProperties.font = [UIFont systemFontOfSize:17
+                                                    weight:active ? UIFontWeightSemibold : UIFontWeightRegular];
+    content.secondaryText = sub;
+    content.secondaryTextProperties.color = UIColor.secondaryLabelColor;
+    content.secondaryTextProperties.font = [UIFont systemFontOfSize:13];
+    // Leading indicator doubles as the "active" marker (filled purple) vs idle.
+    content.image = [UIImage systemImageNamed:active ? @"checkmark.circle.fill" : @"circle"];
+    content.imageProperties.tintColor = active ? UIColor.systemPurpleColor : UIColor.tertiaryLabelColor;
+    content.imageProperties.preferredSymbolConfiguration =
+        [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightRegular];
+    content.imageToTextPadding = 12.0;
+    cell.contentConfiguration = content;
+
+    // Consistent "more actions" affordance on every row.
+    cell.accessoryType = UITableViewCellAccessoryDetailDisclosureButton;
     cell.tintColor = UIColor.systemPurpleColor;
     return cell;
 }

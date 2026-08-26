@@ -34,8 +34,14 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = IVTheme.panelBackground;
-    self.tableView.backgroundColor = UIColor.clearColor;
+    // self.view IS the table view here (UITableViewController): the old code set a
+    // dark background then immediately cleared it, so the picker rendered as a bare
+    // washed-out (white) sheet instead of the app surface. Paint the table with the
+    // panel colour and pin Dark so it matches the dark menu that pushed it, whatever
+    // the system appearance.
+    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    self.tableView.backgroundColor = IVTheme.panelBackground;
+    self.tableView.separatorColor = IVTheme.glassStroke;
 }
 
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s {

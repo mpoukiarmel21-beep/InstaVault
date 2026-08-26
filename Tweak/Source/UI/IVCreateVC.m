@@ -34,7 +34,23 @@
     [super viewDidLoad];
     self.title = self.editing ? @"Modifier" : @"Nouveau conteneur";
     self.view.backgroundColor = IVTheme.panelBackground;
-    self.navigationController.navigationBar.tintColor = IVTheme.accent;
+    // Pin Dark so the grouped table, its separators and system controls read as
+    // one dark surface with the pickers pushed from here.
+    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+
+    // Opaque dark nav bar (same recipe as the main panel) so this screen AND the
+    // model / iOS pickers pushed from it read as one dark surface — never the bare
+    // white bar the default appearance would give.
+    UINavigationBar *bar = self.navigationController.navigationBar;
+    bar.tintColor = IVTheme.accent;
+    UINavigationBarAppearance *ap = [UINavigationBarAppearance new];
+    [ap configureWithOpaqueBackground];
+    ap.backgroundColor = IVTheme.panelBackground;
+    ap.shadowColor = UIColor.clearColor;
+    ap.titleTextAttributes = @{ NSForegroundColorAttributeName: IVTheme.primaryText };
+    bar.standardAppearance = ap;
+    bar.scrollEdgeAppearance = ap;
+    bar.compactAppearance = ap;
 
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel

@@ -19,25 +19,26 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Whamscale";
+    self.title = @"Whamscale";   // back button / accessibilité ; titleView dessine la marque
 
     // Dark violet-tinted surface everywhere; force Dark so system controls
     // (alerts, text fields, the pushed map/create screens) match.
     self.view.backgroundColor = IVTheme.panelBackground;
     self.navigationController.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
-    // Large-title nav painted with the same dark surface + violet accent.
+    // Barre compacte (plus de grand titre) avec une marque discrète à côté du
+    // wordmark, pour que la liste des conteneurs remonte et lise comme une seule
+    // surface fluide.
     UINavigationBar *bar = self.navigationController.navigationBar;
-    bar.prefersLargeTitles = YES;
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;
+    bar.prefersLargeTitles = NO;
     bar.tintColor = IVTheme.accent;
+    self.navigationItem.titleView = [self makeBrandTitleView];
 
     UINavigationBarAppearance *ap = [UINavigationBarAppearance new];
     [ap configureWithOpaqueBackground];
     ap.backgroundColor = IVTheme.panelBackground;
     ap.shadowColor = UIColor.clearColor;
     ap.titleTextAttributes = @{ NSForegroundColorAttributeName: IVTheme.primaryText };
-    ap.largeTitleTextAttributes = @{ NSForegroundColorAttributeName: IVTheme.primaryText };
     bar.standardAppearance = ap;
     bar.scrollEdgeAppearance = ap;
     bar.compactAppearance = ap;
@@ -55,6 +56,9 @@
     self.table.dataSource = self;
     self.table.delegate = self;
     [self.table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"c"];
+    if (@available(iOS 15.0, *)) {
+        self.table.sectionHeaderTopPadding = 0.0;   // pas d'espace mort au-dessus de la 1re ligne
+    }
     self.table.tableFooterView = [self makeResetFooter];
     // If the app launched degraded (isolation could not be applied and we fell
     // back to the REAL account), warn loudly at the top so the user does not log
@@ -95,10 +99,6 @@
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return self.items.count; }
 
-- (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
-    return @"Conteneurs (chacun = un « téléphone » isolé)";
-}
-
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     return @"Changer de conteneur actif nécessite un redémarrage de l'app.";
 }
@@ -135,45 +135,55 @@
     cell.selectedBackgroundView = sel;
 
     cell.tintColor = IVTheme.accent;
-    // Trailing affordances: a phone glyph (device identity) + a gear glyph
-    // (language/region). Only for isolated (non-default) containers — the default
-    // container reports the real device, so there is nothing to inspect or spoof.
-    // Row tap still opens the full action sheet (Activer / GPS / …).
-    if (c.isDefault) {
-        cell.accessoryView = nil;
-        cell.accessoryType = UITableViewCellAccessoryNone;
-    } else {
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.accessoryView = [self trailingControlsForRow:ip.row];
-    }
+    // Affordances de fin de ligne : une épingle de localisation (fake GPS) sur
+    // CHAQUE conteneur, plus un glyphe iPhone (identité device) et un écrou
+    // (langue/région) sur les conteneurs isolés seulement — le conteneur par défaut
+    // reporte le vrai appareil. L'épingle passe en accent dès qu'une localisation
+    // est posée. Le tap sur la ligne ouvre toujours Activer / Renommer / …
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.accessoryView = [self trailingControlsForRow:ip.row];
     return cell;
 }
 
-// A compact [ 📱 ⚙︎ ] pair used as the cell's accessoryView. Buttons carry the
-// row index in their tag so the handler resolves the container at tap time
-// (self.items stays in sync with the table across reloads).
-- (UIView *)trailingControlsForRow:(NSInteger)row {
+// The cell's accessoryView: [ 📱 ⚙︎ 📍 ] for isolated containers, [ 📍 ] for the
+// default one. Each button carries the row index in its tag so the handler
+// resolves the container at tap time (self.items stays in sync across reloads).
+- (nullable UIView *)trailingControlsForRow:(NSInteger)row {
+    if (row < 0 || row >= (NSInteger)self.items.count) return nil;
+    IVContainer *c = self.items[row];
+
+    NSMutableArray<UIButton *> *btns = [NSMutableArray new];
+    if (!c.isDefault) {
+        [btns addObject:[self glyphButton:@"iphone" row:row
+                                   action:@selector(showDeviceInfo:) tint:IVTheme.secondaryText]];
+        [btns addObject:[self glyphButton:@"gearshape" row:row
+                                   action:@selector(showSettings:) tint:IVTheme.secondaryText]];
+    }
+    // Fake GPS available on every container; accent once a location is set.
+    BOOL loc = c.hasLocation;
+    [btns addObject:[self glyphButton:(loc ? @"mappin.circle.fill" : @"mappin.and.ellipse")
+                                  row:row action:@selector(editLocationFromControl:)
+                                 tint:(loc ? IVTheme.accent : IVTheme.secondaryText)]];
+
+    const CGFloat size = 34.0, stride = 38.0;
+    CGFloat width = (btns.count - 1) * stride + size;
+    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, size)];
+    [btns enumerateObjectsUsingBlock:^(UIButton *b, NSUInteger i, BOOL *stop) {
+        b.frame = CGRectMake(i * stride, 0, size, size);
+        [wrap addSubview:b];
+    }];
+    return wrap;
+}
+
+- (UIButton *)glyphButton:(NSString *)symbol row:(NSInteger)row action:(SEL)action tint:(UIColor *)tint {
     UIImageSymbolConfiguration *cfg =
         [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightRegular];
-
-    UIButton *phone = [UIButton buttonWithType:UIButtonTypeSystem];
-    [phone setImage:[UIImage systemImageNamed:@"iphone" withConfiguration:cfg] forState:UIControlStateNormal];
-    phone.tintColor = IVTheme.secondaryText;
-    phone.tag = row;
-    phone.frame = CGRectMake(0, 0, 34, 34);
-    [phone addTarget:self action:@selector(showDeviceInfo:) forControlEvents:UIControlEventTouchUpInside];
-
-    UIButton *gear = [UIButton buttonWithType:UIButtonTypeSystem];
-    [gear setImage:[UIImage systemImageNamed:@"gearshape" withConfiguration:cfg] forState:UIControlStateNormal];
-    gear.tintColor = IVTheme.secondaryText;
-    gear.tag = row;
-    gear.frame = CGRectMake(38, 0, 34, 34);
-    [gear addTarget:self action:@selector(showSettings:) forControlEvents:UIControlEventTouchUpInside];
-
-    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 72, 34)];
-    [wrap addSubview:phone];
-    [wrap addSubview:gear];
-    return wrap;
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    [b setImage:[UIImage systemImageNamed:symbol withConfiguration:cfg] forState:UIControlStateNormal];
+    b.tintColor = tint;
+    b.tag = row;
+    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    return b;
 }
 
 - (nullable IVContainer *)containerForControl:(UIControl *)sender {
@@ -206,10 +216,6 @@
                                              style:IVActionStyleAccentSoft
                                            handler:^{ [ws activate:c]; }]];
     }
-    [sheet addAction:[IVAction actionWithTitle:@"Localisation (GPS)"
-                                        symbol:@"mappin.and.ellipse"
-                                         style:IVActionStyleDefault
-                                       handler:^{ [ws editLocation:c]; }]];
     if (!c.isDefault) {
         [sheet addAction:[IVAction actionWithTitle:@"Renommer"
                                             symbol:@"pencil"
@@ -233,6 +239,11 @@
                                                        preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)editLocationFromControl:(UIButton *)sender {
+    IVContainer *c = [self containerForControl:sender];
+    if (c) [self editLocation:c];
 }
 
 - (void)editLocation:(IVContainer *)c {
@@ -408,6 +419,42 @@
                                                        preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
+}
+
+// A small, restrained brand mark shown in the nav bar beside the "Whamscale"
+// wordmark: a soft accent-tinted rounded badge holding a stacked-layers glyph
+// (the "isolated containers" idea). Deliberately understated — present, not loud.
+- (UIView *)makeBrandTitleView {
+    UILabel *word = [UILabel new];
+    word.text = @"Whamscale";
+    word.textColor = IVTheme.primaryText;
+    word.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    [word sizeToFit];
+
+    const CGFloat badgeSize = 24.0, gap = 8.0, h = 30.0;
+    UIView *badge = [[UIView alloc] initWithFrame:CGRectMake(0, 0, badgeSize, badgeSize)];
+    badge.backgroundColor = [IVTheme.accent colorWithAlphaComponent:0.20];
+    badge.layer.cornerRadius = 6.0;
+    badge.layer.cornerCurve = kCACornerCurveContinuous;
+    badge.layer.borderWidth = 1.0;
+    badge.layer.borderColor = [IVTheme.accent colorWithAlphaComponent:0.55].CGColor;
+
+    UIImageSymbolConfiguration *cfg =
+        [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
+    UIImageView *glyph = [[UIImageView alloc] initWithImage:
+        [UIImage systemImageNamed:@"square.stack.3d.up.fill" withConfiguration:cfg]];
+    glyph.tintColor = IVTheme.accent;
+    glyph.contentMode = UIViewContentModeCenter;
+    glyph.frame = badge.bounds;
+    [badge addSubview:glyph];
+
+    CGFloat w = badgeSize + gap + word.bounds.size.width;
+    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, h)];
+    badge.center = CGPointMake(badgeSize / 2.0, h / 2.0);
+    [wrap addSubview:badge];
+    word.frame = CGRectMake(badgeSize + gap, 0, word.bounds.size.width, h);
+    [wrap addSubview:word];
+    return wrap;
 }
 
 - (UIView *)makeDegradedBanner {

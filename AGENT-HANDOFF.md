@@ -12,36 +12,34 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : **lot v2 « UI / design »** (5 demandes de
-l'utilisateur, presentation-only, traité en Quick Fix groupé). (1) Pickers « tout
-blanc » corrigés à la racine dans `IVListPickerVC` (piège `UITableViewController` :
-`self.view == tableView`, le fond sombre était posé puis effacé) → fond
-`panelBackground` + Dark forcé + séparateurs `glassStroke` : modèle, iOS, langue **et**
-région redeviennent sombres d'un seul correctif. `IVCreateVC` : barre de nav opaque
-sombre + Dark forcé pour être cohérent avec les pickers qu'il pousse. (2) Fake GPS : plus
-d'action dans la feuille, une **icône épingle par conteneur** à côté des icônes 📱/⚙︎
-(accent quand une position est posée, `mappin.circle.fill` ; sinon `mappin.and.ellipse`).
-(3) Marque discrète : grand titre remplacé par un `titleView` compact (badge accent léger
-+ « Whamscale »). (4) Phrase « Conteneurs (chacun = un téléphone…) » retirée +
-`sectionHeaderTopPadding = 0` (gardé `@available(iOS 15.0, *)`) → la liste remonte, plus
-fluide. (5) Nom « Whamscale » conservé. **Livré : build-91**
-(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-91/InstaVault.ipa`,
-325 001 029 o). Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`) — seul le dylib change.
+Claude Code (Opus) — 2026-08-26 : **lot « audit spoof + fermeture auto à
+l'activation »**. (A) Re-vérification bout-en-bout des trois spoofs (langue,
+localisation, modèle) — verdict + 2 durcissements ciblés appliqués. (B) Nouvelle
+fonctionnalité : activer un conteneur **ferme l'app automatiquement** (le choix
+n'est appliqué qu'au lancement, il faut donc redémarrer) ; le conteneur par
+défaut reste le repli. **Livré : build-92**
+(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-92/InstaVault.ipa`,
+325 003 185 o). Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`) — seul le dylib change.
 
 ## Prochaine étape
-**Build livré : build-91** →
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-91/InstaVault.ipa`.
-Installer via Sideloadly, puis **vérifier le lot UI** :
-1. **Pickers sombres** — ouvrir « Modèle d'appareil », « Version iOS » (écran création) et
-   « Langue » / « Région » (icône ⚙︎) : les quatre doivent être **sombres** (fond
-   `panelBackground`, texte clair, coche accent), plus aucun écran blanc.
-2. **Icône localisation** — chaque ligne conteneur porte une épingle à droite ; tap →
-   carte MapKit. L'épingle passe en **violet accent** une fois une position posée.
-3. **Marque + liste** — barre compacte avec petit badge violet + « Whamscale » ; la liste
-   des conteneurs remonte (plus de phrase d'en-tête, pas d'espace mort en haut).
-4. **Non-régression login/identité** (build-90) — toujours à valider en priorité : bascule
-   de conteneur sans « continuer avec le profil connecté » ; picker modèle limité à la puce
-   réelle ; infos device via 📱. Voir l'entrée build-90 ci-dessous pour la procédure de log.
+**Build livré : build-92** →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-92/InstaVault.ipa`.
+Installer via Sideloadly, puis vérifier :
+1. **Fermeture auto** — créer un conteneur, régler modèle/iOS/langue/GPS, taper
+   « Activer ce conteneur » : brève confirmation « Conteneur activé » puis l'app
+   se ferme seule. **Rouvrir** l'app → elle démarre sur le conteneur activé.
+2. **Langue** — dans un conteneur avec une langue posée : l'UI Instagram doit
+   s'afficher dans cette langue au relancement.
+3. **Localisation** — poser Paris sur le conteneur, autoriser IG à accéder à la
+   localisation (réglage iOS), puis taguer un lieu dans un post / ouvrir « lieux
+   à proximité » : la ville proposée doit être Paris. **Caveat** : le spoof GPS
+   agit sur le tag de lieu et la liste des lieux proches, PAS sur la géoloc par
+   adresse IP (pays deviné côté serveur) — pour ça il faudrait un proxy/VPN dans
+   la région.
+4. **Modèle** — via 📱 puis dans les réglages IG : le modèle rapporté doit être
+   celui du menu (limité à la puce réelle de l'appareil, par anti-détection).
+5. **Non-régression login/identité** (build-90) — bascule sans « continuer avec
+   le profil connecté » ; toujours prioritaire au 1er run réel.
 
 
 ## Blocages / risques
@@ -56,6 +54,61 @@ Installer via Sideloadly, puis **vérifier le lot UI** :
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-26 — Claude Code (Opus) — audit spoof (langue/loc/modèle) + fermeture auto à l'activation (build-92)
+
+**Contexte** : l'utilisatrice est satisfaite du build-91 ; deux demandes — (1)
+re-vérifier que les spoofs remontent réellement à Instagram, (2) fermer l'app
+automatiquement quand on active un conteneur, avec un conteneur par défaut vide
+toujours présent en repli. (Sous-agents d'audit indisponibles — erreur 403
+quota ; audit fait en direct sur les sources.)
+
+**Audit — verdict**
+- **Modèle** : SOLIDE. `sysctlbyname("hw.machine")` + `uname()` renvoient le
+  modèle choisi ; iOS coordonné (`UIDevice.systemVersion`, `NSProcessInfo`,
+  `kern.osproductversion`, `kern.osversion`) uniquement quand le build résout ;
+  IDFV/IDFA graines par cid. Le picker limite au **chip réel** (anti-détection) :
+  sur un iPhone 11/12 on ne peut pas se faire passer pour un iPhone 17 — voulu.
+- **Langue** : SOLIDE. `AppleLanguages`/`AppleLocale` injectés dans les prefs
+  redirigées du conteneur **au lancement** (constructeur, avant que UIKit ne lise
+  la localisation) → NSBundle charge le bon `.lproj` ; `+[NSLocale currentLocale/
+  preferredLanguages]` swizzlés ; timezone dérivée de la région. Prend effet **au
+  lancement** — ce que la fermeture auto garantit désormais.
+- **Localisation** : les surfaces CoreLocation (`-location`, `startUpdating`,
+  `requestLocation`, `CLLocationUpdate`) étaient bien couvertes, MAIS
+  l'**autorisation** ne l'était pas → une app sans permission n'appelle jamais
+  `startUpdatingLocation`, donc le faux fix ne remontait jamais. **Corrigé**
+  (voir durcissement). Caveat honnête conservé : le spoof GPS agit sur le tag de
+  lieu / lieux proches, PAS sur la géoloc par IP (pays serveur).
+
+**Durcissements appliqués**
+- `IVLocationSpoof.m` : hooks d'autorisation — `authorizationStatus` (instance
+  iOS 14+ **et** classe dépréciée), `+locationServicesEnabled`,
+  `requestWhenInUseAuthorization`/`requestAlwaysAuthorization`. Quand le conteneur
+  actif a une localisation → renvoie `AuthorizedWhenInUse` / services activés et
+  notifie le délégué (`locationManagerDidChangeAuthorization:` + legacy) pour que
+  l'app interroge la position ; sinon **pass-through** intégral (transparent).
+- `IVDeviceSpoof.m` : hook `sysctl` MIB brut `{CTL_HW, HW_MACHINE}` en plus de
+  `sysctlbyname`/`uname` (certaines libs de fingerprint lisent le modèle par MIB).
+  `HW_MODEL` (board id « D79AP ») laissé intact pour rester cohérent.
+
+**Fonctionnalité — fermeture auto à l'activation (`IVPanelVC.m`)**
+`activate:` persiste le cid actif (`setActiveCID:`) puis, au lieu d'une alerte
+passive « Redémarrage requis », affiche une brève confirmation « Conteneur
+activé » **sans bouton** et ferme l'app : `IVCloseAppForSwitch()` fait
+`-[UIApplication suspend]` (animation « home », pas un crash) puis `exit(0)`
+différé (~0.45 s). iOS n'autorise pas l'auto-relance : il suffit de rouvrir
+l'app, qui démarre alors sur le conteneur activé (isolation+spoof appliqués une
+seule fois au lancement). **Le conteneur par défaut reste le repli** : il est
+non supprimable, jamais spoofé, préservé par `resetAll` — activer un autre
+conteneur ne le touche pas (garantie déjà assurée par `IVContainerStore`, rien à
+changer côté données). Interprétation retenue : la fermeture se fait à
+l'**activation**, pas à la simple création (permet de créer/configurer plusieurs
+conteneurs, le défaut restant actif jusqu'à une activation explicite).
+
+**Build** : commit unique sur `feature/v2-build`, CI dispatch → **build-92 OK**
+(`.../releases/download/build-92/InstaVault.ipa`, 325 003 185 o). Aucun nouveau
+`.m` (édition de fichiers existants) → Makefile inchangé. Non testé sur appareil.
 
 ### 2026-08-26 — Claude Code (Opus) — lot UI/design : pickers sombres + icône localisation + marque discrète + liste remontée (build-91)
 Cinq demandes UI de l'utilisateur, presentation-only, traitées en Quick Fix groupé

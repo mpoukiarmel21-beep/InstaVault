@@ -18,13 +18,14 @@ et déclenchement du build CI (autorisé par l'utilisateur). IPA source = asset
 `INSTAGRAM.ipa` du release `v1.0-ipa`.
 
 ## Prochaine étape
-Suivre le run CI `Build InstaVault IPA` (branche `feature/v2-build`). Si le dylib
-compile (garde-fou anti-Substrate OK) et que l'injection + re-signature passent,
-récupérer l'IPA du release `build-<run>` et l'installer via Sideloadly.
-**Test appareil prioritaire** : (1) pas de crash à l'ouverture ; (2) pas d'erreur
-Sideloadly ; (3) conteneur persiste après fermeture/réouverture ; (4) login
-persiste (le correctif keychain enum ci-dessous doit être validé ici) ; (5) GPS —
-zoom + recherche ville + le faux fix se met à jour et ne fuit pas le vrai GPS.
+**Build CI OK — run #84 réussi.** IPA prête :
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-84/InstaVault.ipa`
+Installer via Sideloadly (cert 7 j) puis **test appareil prioritaire** : (1) pas de
+crash à l'ouverture ; (2) pas d'erreur Sideloadly ; (3) conteneur persiste après
+fermeture/réouverture ; (4) login persiste (le correctif keychain enum doit être
+validé ici — mur historique) ; (5) GPS — zoom + recherche ville + le faux fix se met
+à jour et ne fuit pas le vrai GPS. Remonter les résultats pour trancher les éléments
+différés (purge keychain sur remove/reset, hook `sysctl` MIB, UAF `gSpoofedModelC`).
 
 ## Blocages / risques
 - Push + build CI **autorisés par l'utilisateur** pour ce build (« compile tout ça
@@ -64,8 +65,15 @@ pour que je puisse essayer le fichier IPA »). Push + CI autorisés.
 
 **Build** : branche `feature/v2-build`, un commit du tree v2 complet (Bootstrap.m,
 Core/Isolation/Spoof/UI/Util/vendor + suppressions v1 + Makefile/build.yml + docs).
-Workflow `Build InstaVault IPA` déclenché avec `ipa_url` = asset `INSTAGRAM.ipa` du
-release `v1.0-ipa` (334 Mo, uploadé, jamais dans git). Résultat à valider au run.
+Workflow `Build InstaVault IPA` déclenché avec `ipa_url` = URL directe de l'asset
+`INSTAGRAM.ipa` du release `v1.0-ipa` (334 Mo ; le release contient aussi l'ancien
+`com.burbn.instagram_442…ipa`, d'où l'URL directe plutôt que le tag pour cibler le
+bon asset). **Run #84 = SUCCÈS** (compile dylib OK → garde-fou anti-Substrate passé,
+download + insert_dylib + re-sign ad-hoc + package OK). IPA de sortie :
+`build-84/InstaVault.ipa` (~310 Mo).
+Lien : https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-84/InstaVault.ipa
+**Reste = test appareil** (les 5 points ci-dessus, priorité au login keychain jamais
+validé sur device). Cert Sideloadly 7 jours.
 
 ### 2026-08-26 — Claude Code (Opus) — revue design + isolation (2e passe)
 Sur demande utilisateur (« revérifie le design et l'isolation, apporte des

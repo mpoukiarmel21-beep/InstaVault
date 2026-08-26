@@ -4,7 +4,10 @@
 #import "Core/IVContainerStore.h"
 #import "Isolation/IVHomeRedirect.h"
 #import "Isolation/IVKeychainHook.h"
+#import "Isolation/IVPrefsHook.h"
 #import "Spoof/IVDeviceSpoof.h"
+#import "Spoof/IVDeviceIdentity.h"
+#import "Spoof/IVLocaleSpoof.h"
 #import "Spoof/IVLocationSpoof.h"
 #import "UI/IVFloatingButton.h"
 #import "Util/IVDiagnostics.h"
@@ -36,6 +39,11 @@ static void IVBootstrap(void) {
         // 1. Capture the REAL sandbox home before any redirect touches env vars.
         [IVPaths captureRealHome];
 
+        // 1b. Capture the REAL device chip family NOW — before IVDeviceSpoof rebinds
+        //     sysctlbyname, otherwise the read would return the spoofed model and the
+        //     model picker could offer cross-chip devices (an iPhone 11 as iPhone 17).
+        [IVDeviceIdentity captureRealChip];
+
         // 2. Load the container store from the shared (real-home) control dir.
         IVContainerStore *store = [IVContainerStore shared];
         [store load];
@@ -46,17 +54,21 @@ static void IVBootstrap(void) {
         IVLog(@"TWEAK_LOAD begin — active=%@ (%@)", active.name, active.cid);
 
         // 4. Isolation redirects — applied ONCE, only for non-default containers,
-        //    and ATOMICALLY: the HOME redirect (files) and the keychain namespace
-        //    must succeed together, or neither takes effect. A half-applied state
-        //    (files isolated but keychain shared, or vice versa) is a
-        //    cross-container credential leak. The default container keeps the
-        //    real sandbox + real keychain so an existing Instagram login survives.
+        //    and ATOMICALLY: the HOME redirect (files), the keychain namespace, and
+        //    the CFPreferences redirect must ALL succeed together, or none takes
+        //    effect. A half-applied state (e.g. files+keychain isolated but
+        //    CFPreferences shared) is a cross-container identity leak: Instagram's
+        //    device_id / phone_id live in NSUserDefaults, so a shared prefs store
+        //    would let one container's session hints bleed into another — the exact
+        //    "continue with the profile you logged in" bug. The default container
+        //    keeps the real sandbox + real keychain so an existing login survives.
         BOOL isolated = NO;
         if (!isDefault) {
-            BOOL homeOK = [IVHomeRedirect applyForContainer:active];              // redirect #1: files
-            BOOL keyOK  = homeOK &&
+            BOOL homeOK  = [IVHomeRedirect applyForContainer:active];              // redirect #1: files
+            BOOL keyOK   = homeOK &&
                 [IVKeychainHook installWithPrefix:IVKeychainPrefixForContainer(active)]; // redirect #2: keychain
-            if (homeOK && keyOK) {
+            BOOL prefsOK = keyOK && [IVPrefsHook installForContainer:active];      // redirect #3: CFPreferences
+            if (homeOK && keyOK && prefsOK) {
                 isolated = YES;
             } else {
                 // Roll back any partial redirect so the launch runs consistently
@@ -65,8 +77,8 @@ static void IVBootstrap(void) {
                 // Flag the degraded launch so the UI warns the user: a non-default
                 // container was requested but we are now on the REAL account/keychain.
                 store.isolationDegraded = YES;
-                IVErr(@"Isolation FAILED for %@ (home=%d key=%d) — reverted to real sandbox to avoid split-brain leak",
-                      active.cid, homeOK, keyOK);
+                IVErr(@"Isolation FAILED for %@ (home=%d key=%d prefs=%d) — reverted to real sandbox to avoid split-brain leak",
+                      active.cid, homeOK, keyOK, prefsOK);
             }
         }
 
@@ -76,6 +88,9 @@ static void IVBootstrap(void) {
         //    and suspicious. Deterministic per cid.
         if (isolated) {
             [IVDeviceSpoof installForContainer:active];
+            // Locale/timezone spoof — same gate: only meaningful once files/keychain/
+            // prefs are isolated. No-op when the container sets no language/region.
+            [IVLocaleSpoof installForContainer:active];
         }
 
         // 6. Location spoof — safe to install always; reads the active container

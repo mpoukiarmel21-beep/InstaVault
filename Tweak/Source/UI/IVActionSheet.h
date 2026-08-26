@@ -4,7 +4,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, IVActionStyle) {
     IVActionStyleDefault = 0,   // translucent glass row, light text
-    IVActionStyleAccent,        // filled violet — the primary call to action
+    IVActionStyleAccent,        // filled violet — a loud, solid state signal
+    IVActionStyleAccentSoft,    // glass row, accent-tinted text + hairline: a calm
+                                // primary action. Filled accent is RESERVED for
+                                // "this is the active container" (state), never for
+                                // an action you have not taken yet (avoids the
+                                // "why is Activate already lit?" disorientation).
     IVActionStyleDestructive,   // translucent glass row, red text/symbol
 };
 

@@ -55,6 +55,22 @@ extern NSString *const kIVActiveChanged;       // active container changed
              name:(nullable NSString *)name
      forContainer:(IVContainer *)c;
 
+/// Update the spoofed device identity of a container (model identifier + its
+/// marketing name + iOS marketing version) and persist. Any argument may be nil
+/// to clear that field. Returns NO (and reverts every field in memory) on
+/// persistence failure, so memory never diverges from disk.
+- (BOOL)setDeviceModel:(nullable NSString *)deviceModel
+             iosVersion:(nullable NSString *)iosVersion
+          marketingName:(nullable NSString *)marketingName
+           forContainer:(IVContainer *)c;
+
+/// Update the app-language + region/country overrides of a container and persist.
+/// Pass nil for either to clear it. Returns NO (and reverts in memory) on
+/// persistence failure.
+- (BOOL)setAppLanguage:(nullable NSString *)appLanguage
+                region:(nullable NSString *)region
+          forContainer:(IVContainer *)c;
+
 /// Global reset: delete every non-default container's data + clear the list to
 /// just the default. Returns NO + logs on failure.
 - (BOOL)resetAll;

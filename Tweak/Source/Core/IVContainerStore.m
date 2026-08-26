@@ -255,6 +255,41 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     return YES;
 }
 
+- (BOOL)setDeviceModel:(NSString *)deviceModel
+             iosVersion:(NSString *)iosVersion
+          marketingName:(NSString *)marketingName
+           forContainer:(IVContainer *)c {
+    [_lock lock];
+    @try {
+        NSString *pModel = c.deviceModel; NSString *pIOS = c.iosVersion; NSString *pName = c.marketingName;
+        c.deviceModel = deviceModel; c.iosVersion = iosVersion; c.marketingName = marketingName;
+        if (![self persistLocked]) {
+            c.deviceModel = pModel; c.iosVersion = pIOS; c.marketingName = pName;   // roll back all
+            IVErr(@"setDeviceModel: persist failed for %@ — rolled back", c.cid);
+            return NO;
+        }
+    } @finally { [_lock unlock]; }
+    [self postOnMain:kIVContainersChanged];
+    return YES;
+}
+
+- (BOOL)setAppLanguage:(NSString *)appLanguage
+                region:(NSString *)region
+          forContainer:(IVContainer *)c {
+    [_lock lock];
+    @try {
+        NSString *pLang = c.appLanguage; NSString *pRegion = c.regionCountry;
+        c.appLanguage = appLanguage; c.regionCountry = region;
+        if (![self persistLocked]) {
+            c.appLanguage = pLang; c.regionCountry = pRegion;   // roll back
+            IVErr(@"setAppLanguage: persist failed for %@ — rolled back", c.cid);
+            return NO;
+        }
+    } @finally { [_lock unlock]; }
+    [self postOnMain:kIVContainersChanged];
+    return YES;
+}
+
 - (BOOL)resetAll {
     BOOL ok = YES;
     BOOL persisted = NO;

@@ -1,4 +1,5 @@
 #import "IVDeviceSpoof.h"
+#import "IVDeviceIdentity.h"
 #import "../Core/IVContainerStore.h"
 #import "../Util/IVDiagnostics.h"
 #import "../vendor/fishhook/fishhook.h"
@@ -32,42 +33,56 @@ static char *gSpoofedModelC = NULL;     // strdup for C-level hooks
 static NSString *gVendorUUID = nil;     // IDFV string
 static NSString *gAdvUUID = nil;        // IDFA string
 
+// iOS-version spoof (nil / NULL == report the real OS version untouched).
+static NSString *gSpoofedIOSVersion = nil;   // marketing, e.g. @"26.6.1"
+static NSString *gSpoofedBuild = nil;        // build,     e.g. @"23G83"
+static char *gSpoofedProductVersionC = NULL; // kern.osproductversion
+static char *gSpoofedBuildC = NULL;          // kern.osversion
+
 // Saved originals.
 static int (*orig_sysctlbyname)(const char *, void *, size_t *, void *, size_t) = NULL;
 static int (*orig_uname)(struct utsname *) = NULL;
 
 @implementation IVDeviceSpoof
 
-+ (NSArray<NSString *> *)availableModels {
-    // iOS 26–capable models (A13 Bionic and newer): iPhone 11 → iPhone 16 line.
-    // (iPhone XS/XR = A12 = iPhone11,x are dropped by iOS 26, so they are absent.)
-    return @[ @"iPhone12,1", @"iPhone12,3", @"iPhone12,5", @"iPhone12,8",   // 11 / 11 Pro / Max / SE2
-              @"iPhone13,1", @"iPhone13,2", @"iPhone13,3", @"iPhone13,4",   // 12 mini/12/Pro/Max
-              @"iPhone14,4", @"iPhone14,5", @"iPhone14,2", @"iPhone14,3",   // 13 mini/13/Pro/Max
-              @"iPhone14,6", @"iPhone14,7", @"iPhone14,8",                   // SE3 / 14 / 14 Plus
-              @"iPhone15,2", @"iPhone15,3", @"iPhone15,4", @"iPhone15,5",   // 14 Pro/Max / 15 / 15 Plus
-              @"iPhone16,1", @"iPhone16,2",                                  // 15 Pro / 15 Pro Max
-              @"iPhone17,3", @"iPhone17,4", @"iPhone17,1", @"iPhone17,2" ]; // 16 / 16 Plus / 16 Pro / Max
-}
-
 + (NSString *)effectiveModelForContainer:(IVContainer *)container {
     if (container.deviceModel.length) return container.deviceModel;   // explicit override
-    NSArray<NSString *> *models = [self availableModels];
-    unsigned char h[CC_SHA256_DIGEST_LENGTH];
-    IVSeedBytes(container.cid, h);
-    NSUInteger idx = ((NSUInteger)h[0] << 8 | h[1]) % models.count;    // stable pick
-    return models[idx];
+    // No explicit model: default to the newest model on the REAL chip family, so
+    // display + spoof stay consistent with the anti-fingerprint constraint.
+    return [IVDeviceIdentity defaultModel].identifier;
+}
+
+#pragma mark - Version parsing
+
+static NSOperatingSystemVersion IVParseOSVersion(NSString *v) {
+    NSOperatingSystemVersion o = {0, 0, 0};
+    NSArray<NSString *> *p = [(v ?: @"") componentsSeparatedByString:@"."];
+    if (p.count > 0) o.majorVersion = [p[0] integerValue];
+    if (p.count > 1) o.minorVersion = [p[1] integerValue];
+    if (p.count > 2) o.patchVersion = [p[2] integerValue];
+    return o;
 }
 
 #pragma mark - C-level hooks
 
 static int iv_sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
-    if (gSpoofedModelC && name && strcmp(name, "hw.machine") == 0) {
-        size_t need = strlen(gSpoofedModelC) + 1;
+    // Resolve the spoofed C string for the requested key (NULL == not spoofed).
+    const char *spoof = NULL;
+    if (name) {
+        if (gSpoofedModelC && strcmp(name, "hw.machine") == 0) {
+            spoof = gSpoofedModelC;
+        } else if (gSpoofedProductVersionC && strcmp(name, "kern.osproductversion") == 0) {
+            spoof = gSpoofedProductVersionC;
+        } else if (gSpoofedBuildC && strcmp(name, "kern.osversion") == 0) {
+            spoof = gSpoofedBuildC;
+        }
+    }
+    if (spoof) {
+        size_t need = strlen(spoof) + 1;
         if (!oldp) { if (oldlenp) *oldlenp = need; return 0; }        // size query
         if (!oldlenp) { errno = EINVAL; return -1; }                 // buffer with no length — copying would overflow
         if (*oldlenp < need) { errno = ENOMEM; return -1; }          // caller's buffer too small
-        memcpy(oldp, gSpoofedModelC, need);
+        memcpy(oldp, spoof, need);
         *oldlenp = need;
         return 0;
     }
@@ -82,7 +97,7 @@ static int iv_uname(struct utsname *u) {
     return r;
 }
 
-#pragma mark - Install
+#pragma mark - ObjC swizzle helpers
 
 static void IVSwizzleReturningUUID(Class cls, SEL sel, NSString *(^uuidStr)(void)) {
     if (!cls) return;
@@ -93,6 +108,43 @@ static void IVSwizzleReturningUUID(Class cls, SEL sel, NSString *(^uuidStr)(void
     });
     method_setImplementation(m, imp);
 }
+
+static void IVSwizzleReturningString(Class cls, SEL sel, NSString *(^str)(void)) {
+    if (!cls) return;
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    IMP imp = imp_implementationWithBlock(^NSString *(id _self) { return str(); });
+    method_setImplementation(m, imp);
+}
+
+// Install the coordinated iOS-version surfaces. Only called when the container
+// pins a version AND we can resolve its real build number — so the three OS-level
+// answers (marketing version, struct, build) always agree.
+static void IVInstallIOSVersionSpoof(void) {
+    if (gSpoofedIOSVersion.length == 0) return;
+
+    // UIDevice.systemVersion -> marketing string.
+    IVSwizzleReturningString([UIDevice class], @selector(systemVersion),
+                             ^NSString *{ return gSpoofedIOSVersion; });
+
+    // NSProcessInfo.operatingSystemVersionString -> Apple's "Version X (Build Y)".
+    IVSwizzleReturningString([NSProcessInfo class], @selector(operatingSystemVersionString),
+                             ^NSString *{
+        return [NSString stringWithFormat:@"Version %@ (Build %@)",
+                gSpoofedIOSVersion, gSpoofedBuild ?: @""];
+    });
+
+    // NSProcessInfo.operatingSystemVersion -> struct parsed from the marketing string.
+    Method mv = class_getInstanceMethod([NSProcessInfo class], @selector(operatingSystemVersion));
+    if (mv) {
+        IMP imp = imp_implementationWithBlock(^NSOperatingSystemVersion(id _self) {
+            return IVParseOSVersion(gSpoofedIOSVersion);
+        });
+        method_setImplementation(mv, imp);
+    }
+}
+
+#pragma mark - Install
 
 + (void)installForContainer:(IVContainer *)container {
     if (!container || container.isDefault) {
@@ -106,6 +158,22 @@ static void IVSwizzleReturningUUID(Class cls, SEL sel, NSString *(^uuidStr)(void
     gVendorUUID = [IVSeededUUID(container.cid, @"idfv").UUIDString copy];
     gAdvUUID = [IVSeededUUID(container.cid, @"idfa").UUIDString copy];
 
+    // iOS version — only when the container pins one AND its build resolves, so
+    // kern.osproductversion / kern.osversion / UIDevice / NSProcessInfo agree.
+    if (container.iosVersion.length) {
+        NSString *build = [IVDeviceIdentity buildForIOSVersion:container.iosVersion];
+        if (build.length) {
+            gSpoofedIOSVersion = [container.iosVersion copy];
+            gSpoofedBuild = [build copy];
+            if (gSpoofedProductVersionC) { free(gSpoofedProductVersionC); gSpoofedProductVersionC = NULL; }
+            if (gSpoofedBuildC) { free(gSpoofedBuildC); gSpoofedBuildC = NULL; }
+            gSpoofedProductVersionC = strdup(gSpoofedIOSVersion.UTF8String);
+            gSpoofedBuildC = strdup(gSpoofedBuild.UTF8String);
+        } else {
+            IVErr(@"DeviceSpoof: no build number for iOS %@ — leaving OS version real", container.iosVersion);
+        }
+    }
+
     // IDFV — every app on a device shares one, so per-container is plausible.
     IVSwizzleReturningUUID([UIDevice class], @selector(identifierForVendor), ^NSString *{ return gVendorUUID; });
 
@@ -115,14 +183,17 @@ static void IVSwizzleReturningUUID(Class cls, SEL sel, NSString *(^uuidStr)(void
     Class asmCls = NSClassFromString(@"ASIdentifierManager");
     IVSwizzleReturningUUID(asmCls, NSSelectorFromString(@"advertisingIdentifier"), ^NSString *{ return gAdvUUID; });
 
-    // hw.machine via sysctlbyname + uname.
+    // iOS-version ObjC surfaces (no-op when unset above).
+    IVInstallIOSVersionSpoof();
+
+    // hw.machine (+ kern.os* when set) via sysctlbyname + uname.
     struct rebinding r[] = {
         {"sysctlbyname", (void *)iv_sysctlbyname, (void **)&orig_sysctlbyname},
         {"uname",        (void *)iv_uname,        (void **)&orig_uname},
     };
     int rc = rebind_symbols(r, sizeof(r) / sizeof(r[0]));
-    IVLog(@"DeviceSpoof: model=%@ idfv=%@ rc=%d", gSpoofedModel, gVendorUUID, rc);
+    IVLog(@"DeviceSpoof: model=%@ ios=%@ (build %@) idfv=%@ rc=%d",
+          gSpoofedModel, gSpoofedIOSVersion ?: @"real", gSpoofedBuild ?: @"-", gVendorUUID, rc);
 }
 
 @end
-

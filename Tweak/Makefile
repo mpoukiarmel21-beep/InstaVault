@@ -17,12 +17,16 @@ InstaVault_FILES = \
 	Source/Core/IVContainerStore.m \
 	Source/Isolation/IVHomeRedirect.m \
 	Source/Isolation/IVKeychainHook.m \
+	Source/Isolation/IVPrefsHook.m \
 	Source/Spoof/IVDeviceSpoof.m \
+	Source/Spoof/IVDeviceIdentity.m \
+	Source/Spoof/IVLocaleSpoof.m \
 	Source/Spoof/IVLocationSpoof.m \
 	Source/UI/IVTheme.m \
 	Source/UI/IVGlass.m \
 	Source/UI/IVActionSheet.m \
 	Source/UI/IVFloatingButton.m \
+	Source/UI/IVListPickerVC.m \
 	Source/UI/IVPanelVC.m \
 	Source/UI/IVCreateVC.m \
 	Source/UI/IVMapPickerVC.m \

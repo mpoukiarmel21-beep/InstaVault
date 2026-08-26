@@ -250,6 +250,16 @@ static const CGFloat kIVHeaderGap  = 6.0;
             b.backgroundColor = [IVTheme accent];
             fg = [IVTheme onAccent];
             break;
+        case IVActionStyleAccentSoft:
+            // Calm primary: translucent glass base like the neutral rows, but the
+            // text/symbol carry the accent and an accent-tinted hairline frames it,
+            // so it reads as "the main thing to do here" without the loud filled
+            // slab that made users think the container was already active.
+            b.backgroundColor = [IVTheme glassFill];
+            b.layer.borderWidth = 1.0;
+            b.layer.borderColor = [[IVTheme accent] colorWithAlphaComponent:0.55].CGColor;
+            fg = [IVTheme accent];
+            break;
         case IVActionStyleDestructive:
             b.backgroundColor = [IVTheme glassFill];
             b.layer.borderWidth = 1.0;

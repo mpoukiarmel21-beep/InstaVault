@@ -1,11 +1,14 @@
 #import "IVPanelVC.h"
 #import "IVCreateVC.h"
 #import "IVMapPickerVC.h"
+#import "IVListPickerVC.h"
 #import "IVTheme.h"
 #import "IVActionSheet.h"
 #import "../Core/IVContainer.h"
 #import "../Core/IVContainerStore.h"
 #import "../Spoof/IVDeviceSpoof.h"
+#import "../Spoof/IVDeviceIdentity.h"
+#import "../Spoof/IVLocaleSpoof.h"
 
 @interface IVPanelVC () <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UITableView *table;
@@ -131,10 +134,51 @@
     sel.backgroundColor = IVTheme.elevatedSurface;
     cell.selectedBackgroundView = sel;
 
-    // Consistent "more actions" affordance on every row.
-    cell.accessoryType = UITableViewCellAccessoryDetailDisclosureButton;
     cell.tintColor = IVTheme.accent;
+    // Trailing affordances: a phone glyph (device identity) + a gear glyph
+    // (language/region). Only for isolated (non-default) containers — the default
+    // container reports the real device, so there is nothing to inspect or spoof.
+    // Row tap still opens the full action sheet (Activer / GPS / …).
+    if (c.isDefault) {
+        cell.accessoryView = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
+    } else {
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.accessoryView = [self trailingControlsForRow:ip.row];
+    }
     return cell;
+}
+
+// A compact [ 📱 ⚙︎ ] pair used as the cell's accessoryView. Buttons carry the
+// row index in their tag so the handler resolves the container at tap time
+// (self.items stays in sync with the table across reloads).
+- (UIView *)trailingControlsForRow:(NSInteger)row {
+    UIImageSymbolConfiguration *cfg =
+        [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightRegular];
+
+    UIButton *phone = [UIButton buttonWithType:UIButtonTypeSystem];
+    [phone setImage:[UIImage systemImageNamed:@"iphone" withConfiguration:cfg] forState:UIControlStateNormal];
+    phone.tintColor = IVTheme.secondaryText;
+    phone.tag = row;
+    phone.frame = CGRectMake(0, 0, 34, 34);
+    [phone addTarget:self action:@selector(showDeviceInfo:) forControlEvents:UIControlEventTouchUpInside];
+
+    UIButton *gear = [UIButton buttonWithType:UIButtonTypeSystem];
+    [gear setImage:[UIImage systemImageNamed:@"gearshape" withConfiguration:cfg] forState:UIControlStateNormal];
+    gear.tintColor = IVTheme.secondaryText;
+    gear.tag = row;
+    gear.frame = CGRectMake(38, 0, 34, 34);
+    [gear addTarget:self action:@selector(showSettings:) forControlEvents:UIControlEventTouchUpInside];
+
+    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 72, 34)];
+    [wrap addSubview:phone];
+    [wrap addSubview:gear];
+    return wrap;
+}
+
+- (nullable IVContainer *)containerForControl:(UIControl *)sender {
+    NSInteger row = sender.tag;
+    return (row >= 0 && row < (NSInteger)self.items.count) ? self.items[row] : nil;
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
@@ -158,8 +202,8 @@
 
     if (!active) {
         [sheet addAction:[IVAction actionWithTitle:@"Activer ce conteneur"
-                                            symbol:@"checkmark.circle.fill"
-                                             style:IVActionStyleAccent
+                                            symbol:@"power.circle.fill"
+                                             style:IVActionStyleAccentSoft
                                            handler:^{ [ws activate:c]; }]];
     }
     [sheet addAction:[IVAction actionWithTitle:@"Localisation (GPS)"
@@ -236,6 +280,100 @@
         }
     }]];
     [self presentViewController:a animated:YES completion:nil];
+}
+
+#pragma mark - Device info (read-only) + settings (language / region)
+
+- (void)showDeviceInfo:(UIButton *)sender {
+    IVContainer *c = [self containerForControl:sender];
+    if (!c) return;
+    NSString *ident = [IVDeviceSpoof effectiveModelForContainer:c];
+    NSString *marketing = [IVDeviceIdentity marketingNameForIdentifier:ident];
+
+    NSMutableArray<NSString *> *lines = [NSMutableArray new];
+    if (c.iosVersion.length) {
+        NSString *build = [IVDeviceIdentity buildForIOSVersion:c.iosVersion];
+        [lines addObject:[NSString stringWithFormat:@"iOS %@%@", c.iosVersion,
+                          build.length ? [NSString stringWithFormat:@" (build %@)", build] : @""]];
+    } else {
+        [lines addObject:@"iOS : version réelle (non forcée)"];
+    }
+    [lines addObject:[NSString stringWithFormat:@"Identifiant : %@", ident]];
+    [lines addObject:[NSString stringWithFormat:@"N° de modèle : %@",
+                      [IVDeviceIdentity modelNumberForCID:c.cid region:c.regionCountry]]];
+    [lines addObject:[NSString stringWithFormat:@"N° de série : %@", [IVDeviceIdentity serialForCID:c.cid]]];
+    [lines addObject:@""];
+    [lines addObject:@"Ces informations sont celles répondues à Instagram (série et n° de modèle sont indicatifs, affichage seul)."];
+
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:marketing
+                                                              message:[lines componentsJoinedByString:@"\n"]
+                                                       preferredStyle:UIAlertControllerStyleAlert];
+    a.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    [a addAction:[UIAlertAction actionWithTitle:@"Fermer" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)showSettings:(UIButton *)sender {
+    IVContainer *c = [self containerForControl:sender];
+    if (!c) return;
+    __weak typeof(self) ws = self;
+
+    NSString *langNow = c.appLanguage.length
+        ? [IVLocaleSpoof displayNameForLanguage:c.appLanguage] : @"Automatique";
+    NSString *regionNow = c.regionCountry.length
+        ? [IVLocaleSpoof displayNameForRegion:c.regionCountry] : @"Automatique";
+
+    IVActionSheet *sheet = [[IVActionSheet alloc] initWithTitle:[NSString stringWithFormat:@"Réglages — %@", c.name]
+                                                        message:@"Prend effet au prochain démarrage de l'app."];
+    [sheet addAction:[IVAction actionWithTitle:[NSString stringWithFormat:@"Langue : %@", langNow]
+                                        symbol:@"globe"
+                                         style:IVActionStyleDefault
+                                       handler:^{ [ws pickLanguageFor:c]; }]];
+    [sheet addAction:[IVAction actionWithTitle:[NSString stringWithFormat:@"Région : %@", regionNow]
+                                        symbol:@"map"
+                                         style:IVActionStyleDefault
+                                       handler:^{ [ws pickRegionFor:c]; }]];
+    [sheet presentFrom:self];
+}
+
+- (void)pickLanguageFor:(IVContainer *)c {
+    NSMutableArray<IVListOption *> *opts = [NSMutableArray new];
+    [opts addObject:[IVListOption value:@"" title:@"Automatique (système)" subtitle:nil]];
+    for (NSString *code in [IVLocaleSpoof supportedLanguageCodes]) {
+        [opts addObject:[IVListOption value:code title:[IVLocaleSpoof displayNameForLanguage:code] subtitle:code]];
+    }
+    __weak typeof(self) ws = self;
+    IVListPickerVC *p = [[IVListPickerVC alloc] initWithTitle:@"Langue de l'application"
+                                                      options:opts
+                                                selectedValue:c.appLanguage
+                                                       onPick:^(IVListOption *o) {
+        NSString *lang = o.value.length ? o.value : nil;
+        if (![[IVContainerStore shared] setAppLanguage:lang region:c.regionCountry forContainer:c]) {
+            [ws warn:@"Échec" msg:@"Impossible d'enregistrer la langue (écriture disque échouée)."];
+        }
+        [ws reload];
+    }];
+    [self.navigationController pushViewController:p animated:YES];
+}
+
+- (void)pickRegionFor:(IVContainer *)c {
+    NSMutableArray<IVListOption *> *opts = [NSMutableArray new];
+    [opts addObject:[IVListOption value:@"" title:@"Automatique (système)" subtitle:nil]];
+    for (NSString *code in [IVLocaleSpoof supportedRegionCodes]) {
+        [opts addObject:[IVListOption value:code title:[IVLocaleSpoof displayNameForRegion:code] subtitle:code]];
+    }
+    __weak typeof(self) ws = self;
+    IVListPickerVC *p = [[IVListPickerVC alloc] initWithTitle:@"Pays / région"
+                                                      options:opts
+                                                selectedValue:c.regionCountry
+                                                       onPick:^(IVListOption *o) {
+        NSString *region = o.value.length ? o.value : nil;
+        if (![[IVContainerStore shared] setAppLanguage:c.appLanguage region:region forContainer:c]) {
+            [ws warn:@"Échec" msg:@"Impossible d'enregistrer la région (écriture disque échouée)."];
+        }
+        [ws reload];
+    }];
+    [self.navigationController pushViewController:p animated:YES];
 }
 
 - (void)createNew {

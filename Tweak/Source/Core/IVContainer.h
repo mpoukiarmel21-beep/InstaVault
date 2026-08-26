@@ -21,8 +21,25 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *locationName;   // "City, Country"
 
 /// Spoofed device model identifier, e.g. "iPhone14,2". nil == derive
-/// deterministically from the container seed (SHA256(cid)).
+/// deterministically (newest model in the REAL chip family). This is the
+/// canonical identifier fed to the sysctl/uname hooks.
 @property (nonatomic, copy, nullable) NSString *deviceModel;
+
+/// Human marketing name for `deviceModel`, e.g. "iPhone 16 Pro". Persisted for
+/// stable display; recomputable from deviceModel via IVDeviceIdentity.
+@property (nonatomic, copy, nullable) NSString *marketingName;
+
+/// Spoofed iOS marketing version, e.g. "26.6.1". nil == report the real OS
+/// version unchanged. When set it is answered on every OS-version surface
+/// (UIDevice.systemVersion, NSProcessInfo, sysctl kern.osproductversion/osversion).
+@property (nonatomic, copy, nullable) NSString *iosVersion;
+
+/// App language override (ISO code, e.g. "fr", "en"). nil == no override.
+@property (nonatomic, copy, nullable) NSString *appLanguage;
+
+/// Region/country reference (ISO code, e.g. "FR", "US"). Drives NSLocale /
+/// NSTimeZone spoofing + the display-only model number suffix. nil == no override.
+@property (nonatomic, copy, nullable) NSString *regionCountry;
 
 @property (nonatomic, strong) NSDate *createdAt;
 @property (nonatomic, strong, nullable) NSDate *lastUsedAt;

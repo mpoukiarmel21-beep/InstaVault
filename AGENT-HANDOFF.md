@@ -12,36 +12,37 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : **lot durcissement post-vérification #87**. Après
-build-87 (fix internet-password + Whamscale + menu sombre + IVActionSheet), une
-vérification adversariale multi-agents a jugé le fix login **« incomplet »** (le leak
-internet-password nommé est bien fermé, mais des classes keychain non-password et des
-chemins d'échec silencieux subsistent). Ce lot applique les correctifs **sûrs** : (a)
-**reset honnête + vérifié** (`resetAll`/`removeContainer`/`deleteContainerDataLocked`
-propagent l'échec disque + re-comptent le keychain après purge via `countItemsWithPrefix`) ;
-(b) **fail-loud isolation dégradée** (bannière rouge dans `IVPanelVC` si un conteneur
-non-défaut n'a pas pu être isolé — cid non résolu au load ou rebind KO) ; (c)
-**diagnostics keychain** (log dédupliqué classe+attributs par op SecItem, aucune valeur
-secrète). Le namespacing spéculatif de `kSecClassKey` est **volontairement différé** :
-le diagnostic dira d'abord si Instagram y range la session. **Livré : build-89**
-(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-89/InstaVault.ipa`,
-324 964 577 o). Base IG identique à build-87 (INSTAGRAM.ipa) — seul le dylib change.
+Claude Code (Opus) — 2026-08-26 : **lot v2 « UI / design »** (5 demandes de
+l'utilisateur, presentation-only, traité en Quick Fix groupé). (1) Pickers « tout
+blanc » corrigés à la racine dans `IVListPickerVC` (piège `UITableViewController` :
+`self.view == tableView`, le fond sombre était posé puis effacé) → fond
+`panelBackground` + Dark forcé + séparateurs `glassStroke` : modèle, iOS, langue **et**
+région redeviennent sombres d'un seul correctif. `IVCreateVC` : barre de nav opaque
+sombre + Dark forcé pour être cohérent avec les pickers qu'il pousse. (2) Fake GPS : plus
+d'action dans la feuille, une **icône épingle par conteneur** à côté des icônes 📱/⚙︎
+(accent quand une position est posée, `mappin.circle.fill` ; sinon `mappin.and.ellipse`).
+(3) Marque discrète : grand titre remplacé par un `titleView` compact (badge accent léger
++ « Whamscale »). (4) Phrase « Conteneurs (chacun = un téléphone…) » retirée +
+`sectionHeaderTopPadding = 0` (gardé `@available(iOS 15.0, *)`) → la liste remonte, plus
+fluide. (5) Nom « Whamscale » conservé. **Livré : build-91**
+(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-91/InstaVault.ipa`,
+325 001 029 o). Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`) — seul le dylib change.
 
 ## Prochaine étape
-**Build livré : build-89** →
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-89/InstaVault.ipa`.
-Installer via Sideloadly, puis :
-1. **Re-tester le bug login Paris↔Nice↔Paris** — Paris doit rester connecté. Si ça
-   tourne encore, **récupérer le log** `<realHome>/Documents/InstaVault/logs/instavault.log`
-   (accessible via l'app Fichiers) et repérer les lignes `KC …` : si on y voit
-   `add key […]` ou `add idnt […]` pendant la connexion, la session vit dans une classe
-   **non-namespacée** → prochain correctif ciblé (étendre le namespacing à cette classe).
-   Si on ne voit que `genp`/`inet`, le fix build-87 suffit et la cause est ailleurs.
-2. **« Tout réinitialiser »** — doit effacer tous les conteneurs + identifiants ; en cas
-   de wipe partiel, l'UI affiche désormais « Réinitialisation incomplète » (au lieu de
-   prétendre le succès).
-3. Vérifier aussi : nom « Whamscale » partout, thème sombre + feuille d'actions lisibles,
-   n° de modèle par conteneur.
+**Build livré : build-91** →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-91/InstaVault.ipa`.
+Installer via Sideloadly, puis **vérifier le lot UI** :
+1. **Pickers sombres** — ouvrir « Modèle d'appareil », « Version iOS » (écran création) et
+   « Langue » / « Région » (icône ⚙︎) : les quatre doivent être **sombres** (fond
+   `panelBackground`, texte clair, coche accent), plus aucun écran blanc.
+2. **Icône localisation** — chaque ligne conteneur porte une épingle à droite ; tap →
+   carte MapKit. L'épingle passe en **violet accent** une fois une position posée.
+3. **Marque + liste** — barre compacte avec petit badge violet + « Whamscale » ; la liste
+   des conteneurs remonte (plus de phrase d'en-tête, pas d'espace mort en haut).
+4. **Non-régression login/identité** (build-90) — toujours à valider en priorité : bascule
+   de conteneur sans « continuer avec le profil connecté » ; picker modèle limité à la puce
+   réelle ; infos device via 📱. Voir l'entrée build-90 ci-dessous pour la procédure de log.
+
 
 ## Blocages / risques
 - Push + build CI **autorisés par l'utilisateur** pour ce build (« compile tout ça
@@ -55,6 +56,132 @@ Installer via Sideloadly, puis :
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-26 — Claude Code (Opus) — lot UI/design : pickers sombres + icône localisation + marque discrète + liste remontée (build-91)
+Cinq demandes UI de l'utilisateur, presentation-only, traitées en Quick Fix groupé
+(aucun impact archi/données ; diff minimal, abstractions préservées).
+
+**(1) Pickers « tout blanc » — cause racine + correctif central (`IVListPickerVC.m`)**
+Symptôme : « Modèle d'iPhone », « Version iOS », « Région » et « Langue » s'ouvraient en
+blanc, hors thème. Cause : `IVListPickerVC` est un `UITableViewController` → `self.view`
+**EST** `self.tableView`. L'ancien `viewDidLoad` posait `self.view.backgroundColor =
+panelBackground` puis, juste après, `self.tableView.backgroundColor = clearColor` — donc il
+**effaçait** le fond sombre et la table retombait sur l'apparence système (claire). Ces
+quatre pickers partagent tous `IVListPickerVC`, donc un seul correctif règle les quatre :
+```objc
+self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+self.tableView.backgroundColor = IVTheme.panelBackground;
+self.tableView.separatorColor  = IVTheme.glassStroke;
+```
+`IVCreateVC.m` (écran qui pousse les pickers modèle/iOS) durci en parallèle : barre de nav
+opaque sombre (recette `UINavigationBarAppearance` du panneau principal) + `Dark` forcé, pour
+que création **et** pickers lisent comme une seule surface sombre.
+
+**(2) Fake GPS — icône par conteneur au lieu d'une action de feuille (`IVPanelVC.m`)**
+La localisation était une ligne « Localisation (GPS) » dans la feuille d'actions. Retirée
+de la feuille ; désormais une **épingle en fin de ligne sur CHAQUE conteneur** (le tap ouvre
+directement la carte MapKit `IVMapPickerVC`). `trailingControlsForRow:` devient un builder à
+nombre variable : `mappin.circle.fill` (accent) si une position est posée, sinon
+`mappin.and.ellipse` (gris) ; 📱 (infos device) et ⚙︎ (langue/région) restent réservés aux
+conteneurs isolés. Nouveau helper `glyphButton:row:action:tint:` (tag = index de ligne,
+résolu au tap via `containerForControl:`) + wrapper `editLocationFromControl:`.
+
+**(3) Marque discrète (`IVPanelVC.m`, `makeBrandTitleView`)**
+Grand titre supprimé (`prefersLargeTitles = NO`, plus de `largeTitleDisplayMode`).
+`navigationItem.titleView` = marque compacte : badge arrondi tinté accent (α0.20 fond, α0.55
+bord) portant `square.stack.3d.up.fill` + wordmark « Whamscale ». Présent mais retenu, comme
+demandé (« pas trop visible »).
+
+**(4) Liste remontée (`IVPanelVC.m`)**
+Méthode `titleForHeaderInSection:` (qui renvoyait « Conteneurs (chacun = un « téléphone »
+isolé) ») supprimée. `sectionHeaderTopPadding = 0.0` ajouté (gardé `@available(iOS 15.0,*)`
+car cible de déploiement 13.0) → plus d'espace mort au-dessus de la 1re ligne. Le footer
+« Changer de conteneur actif nécessite un redémarrage » est conservé.
+
+**(5) Nom** « Whamscale » conservé partout (texte UI uniquement ; identifiants internes,
+dossier de contrôle `~/Documents/InstaVault/` et préfixe keychain `IV:` inchangés).
+
+**Vérification** : pas de compilateur local (Windows) → revue statique du diff (aucune réf
+pendante : `largeTitleDisplayMode`/`titleForHeaderInSection` bien retirés, `hasLocation`
+confirmé sur `IVContainer`, les 3 fichiers déjà dans le Makefile, aucun nouveau `.m`). **CI
+verte** (run 32969455539, `feature/v2-build`) → **build-91**, dylib substrate-free confirmée
+par le garde `otool`. IPA 325 001 029 o (≈ build-90 : seul le dylib change).
+Livré : `https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-91/InstaVault.ipa`.
+
+### 2026-08-26 — Claude Code (Opus) — fix login (redirection #3 CFPreferences) + identité device réaliste + locale + UX conteneur
+Trois demandes de l'utilisateur, réglées étape par étape.
+
+**(1) Bug login persistance — cause racine + correctif (`IVPrefsHook.{h,m}`, nouveau)**
+Symptôme : bascule de conteneur puis retour → Instagram affiche « continuer avec le profil
+connecté » au lieu de rester connecté. Cause : sur iOS 26 le démon de préférences `cfprefsd`
+résout le chemin plist d'un domaine **depuis le sandbox du process**, en **ignorant
+`CFFIXED_USER_HOME`** — donc la redirection HOME (#1) n'isolait **pas** `NSUserDefaults`/
+`CFPreferences`. Or Instagram y range `device_id`/`phone_id`/hints de session : store de
+défauts **partagé** entre conteneurs = leak d'identité = le chooser. Correctif (technique
+LiveContainer) : swizzle du privé
+`-[CFPrefsPlistSource initWithDomain:user:byHost:containerPath:containingPreferences:]` pour
+réécrire le **chemin plist** de tout domaine non-`com.apple.` vers `Library/Preferences` du
+conteneur (+ force `AnyUser→CurrentUser`) ; `com.apple.*` passe tel quel. Swizzle **ARC-safe**
+(IMP en fonction C à types opaques `void*`/`CFStringRef`, `__bridge`, original via
+`method_setImplementation`). **Fail-loud** : classe/sélecteur privé absent → renvoie `NO`.
+`Bootstrap.m` : l'isolation devient **atomique à 3 volets** — `homeOK && keyOK && prefsOK`,
+sinon `revertToRealHome` + `isolationDegraded=YES` (bannière rouge). Le device/locale-spoof
+ne s'installe que si `isolated`.
+
+**(2) Système de modèles réaliste + version iOS + locale**
+- `IVDeviceIdentity.{h,m}` (nouveau) : source de vérité de l'identité. Matrice complète
+  iPhone 11→17 **groupée par SoC exact**, `captureRealChip` (lu **avant** les hooks sysctl,
+  sinon on lit le modèle spoofé), `modelsForRealChip` (le picker n'offre que la génération de
+  puce réelle — plus d'iPhone 17 sur un iPhone 11, ni d'« iPhone 12,2 » inexistant),
+  `defaultModel` (le plus récent de la puce), `iosVersions` + `buildForIOSVersion:` (builds
+  réels pour garder `kern.osproductversion`/`osversion` cohérents), série + n° de modèle
+  **déterministes par cid, affichage seul** (un sandbox iOS 26 ne lit pas les vrais ; en
+  fabriquer là où l'OS ne répond rien serait un *tell*).
+- `IVDeviceSpoof.{h,m}` : ajout du spoof **version iOS** (UIDevice.systemVersion,
+  NSProcessInfo.operatingSystemVersion(+String), sysctl `kern.osproductversion`/`kern.osversion`)
+  répondu de façon cohérente ; modèle borné à la puce réelle ; `availableModels` retiré au
+  profit d'`IVDeviceIdentity`. `effectiveModelForContainer:` = modèle du conteneur ou défaut.
+- `IVLocaleSpoof.{h,m}` (nouveau) : langue app + région/pays → seed `AppleLanguages`/
+  `AppleLocale` dans les prefs (désormais **redirigées**) pour NSBundle .lproj, + swizzle
+  `NSLocale.currentLocale/autoupdatingCurrentLocale/preferredLanguages`,
+  `NSTimeZone.systemTimeZone/localTimeZone/defaultTimeZone` (région→IANA, tz spoofée seulement
+  si résolvable), + fishhook `CFLocaleCopyCurrent`/`CFTimeZoneCopySystem`/`…Default`. Gated sur
+  isolation active ; carrier/CoreTelephony **hors scope** (un carrier fabriqué qui contredit
+  l'IP est un *tell*, et un sandbox ne lit pas le vrai).
+- `IVCreateVC.m` : à la création, choix du **modèle** (nom marketing) + de la **version iOS**
+  via `IVListPickerVC` ; défaut = modèle le plus récent de la puce + iOS le plus récent.
+- `IVListPickerVC.{h,m}` (nouveau) : picker réutilisable dark (checkmark, sous-titre).
+
+**(3) UX conteneur (`IVPanelVC.m`, `IVActionSheet` déjà en place)**
+- Par ligne de conteneur **isolé** : icône **📱** (`iphone`) → feuille d'infos device en
+  lecture seule (nom marketing, iOS+build, identifiant, n° de modèle, série) ; icône **⚙︎**
+  (`gearshape`) → réglages **langue / région** (via `IVListPickerVC`, option « Automatique »
+  = nil ; « prend effet au prochain démarrage »). Le conteneur par défaut n'a aucune des deux
+  (il reporte le vrai appareil).
+- « Activer ce conteneur » : `IVActionStyleAccentSoft` (glass + texte accent) — coloré
+  **seulement au tap**, le violet plein restant réservé à l'état « conteneur actif » (fix UX
+  déjà appliqué au lot précédent, conservé).
+
+**Store** : `setDeviceModel:iosVersion:marketingName:forContainer:` et
+`setAppLanguage:region:forContainer:` (pattern lock/save-prev/mutate/persist/rollback/postOnMain,
+échec disque propagé). `IVContainer` : champs `deviceModel`/`marketingName`/`iosVersion`/
+`appLanguage`/`regionCountry` (nullables, persistés).
+
+**Plafond honnête** : le fix prefs est le plus haut-confiance et sans régression, mais si
+Instagram fait du **device-binding côté serveur** (attestation liée au 1ᵉʳ login), une part
+du bug peut survivre (~45-60 % estimé). Le log on-device (`PrefsHook: …redirected` + lignes
+`KC …`) tranchera la cause résiduelle.
+
+Fichiers nouveaux : `Isolation/IVPrefsHook.{h,m}`, `Spoof/IVDeviceIdentity.{h,m}`,
+`Spoof/IVLocaleSpoof.{h,m}`, `UI/IVListPickerVC.{h,m}` — **tous ajoutés au Makefile**.
+Modifiés : `Bootstrap.m`, `IVDeviceSpoof.{h,m}`, `IVContainer.{h,m}`, `IVContainerStore.{h,m}`,
+`IVActionSheet.{h,m}`, `IVCreateVC.m`, `IVPanelVC.m`. Commit `20aa21c` sur `feature/v2-build`.
+Build local impossible (Windows) → **CI run 32963129721 = SUCCÈS → build-90**
+(`InstaVault.ipa`, 324 997 516 o ; +33 Ko vs build-89 = juste le dylib). Base IG = **`INSTAGRAM.ipa`**
+(release `v1.0-ipa`, log CI : `Downloading from repo=… tag=v1.0-ipa asset=INSTAGRAM.ipa`),
+garde anti-Substrate passée. Lien :
+https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-90/InstaVault.ipa
+Reste = **test appareil**, priorité au bug login.
 
 ### 2026-08-26 — Claude Code (Opus) — durcissement post-vérification : reset vérifié, fail-loud isolation, diagnostics keychain
 Après livraison de build-87, une **vérification adversariale à 4 agents** (workflow) a

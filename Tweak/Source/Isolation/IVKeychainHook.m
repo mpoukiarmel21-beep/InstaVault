@@ -139,12 +139,54 @@ static id IVReshapeItem(NSDictionary *d, BOOL wantData, BOOL wantAttrs,
     return vals;
 }
 
+#pragma mark - Diagnostics (keychain-usage map)
+
+static NSString *IVClassName(id cls) {
+    if ([cls isEqual:(__bridge id)kSecClassGenericPassword])  return @"genp";
+    if ([cls isEqual:(__bridge id)kSecClassInternetPassword]) return @"inet";
+    if ([cls isEqual:(__bridge id)kSecClassKey])              return @"key";
+    if ([cls isEqual:(__bridge id)kSecClassCertificate])      return @"cert";
+    if ([cls isEqual:(__bridge id)kSecClassIdentity])         return @"idnt";
+    return cls ? @"other" : @"none";
+}
+
+// Log each DISTINCT keychain-op signature ONCE, so a device test reveals exactly
+// which item classes and key attributes Instagram touches during login WITHOUT
+// spamming the ring log or ever recording a secret value. This is how we finally
+// answer, with real data, whether session material lives in a class we do not yet
+// namespace (kSecClassKey / identity) — the open question behind any residual
+// "spinning on login". Only the PRESENCE of attributes is read, never a value.
+static void IVLogKeychainOp(NSString *op, NSDictionary *m) {
+    if (!m) return;
+    NSString *cls = IVClassName(m[(__bridge id)kSecClass]);
+    NSMutableArray *f = [NSMutableArray array];
+    if (m[(__bridge id)kSecAttrService])          [f addObject:@"svc"];
+    if (m[(__bridge id)kSecAttrServer])           [f addObject:@"srv"];
+    if (m[(__bridge id)kSecAttrAccount])          [f addObject:@"acct"];
+    if (m[(__bridge id)kSecAttrApplicationTag])   [f addObject:@"tag"];
+    if (m[(__bridge id)kSecAttrApplicationLabel]) [f addObject:@"lbl"];
+    if (m[(__bridge id)kSecAttrAccessGroup])      [f addObject:@"grp"];
+    if (m[(__bridge id)kSecValuePersistentRef])   [f addObject:@"pref"];
+    if (m[(__bridge id)kSecMatchItemList])        [f addObject:@"itemlist"];
+    BOOL ns = (IVNamespaceField(m) != NULL);
+    NSString *sig = [NSString stringWithFormat:@"%@ %@ [%@] %@",
+                     op, cls, [f componentsJoinedByString:@","], ns ? @"NS" : @"raw"];
+    static NSMutableSet *seen; static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet new]; });
+    @synchronized (seen) {
+        if ([seen containsObject:sig]) return;
+        [seen addObject:sig];
+    }
+    IVLog(@"KC %@", sig);
+}
+
 #pragma mark - Hooked functions
 
 // WRITE: namespace the item's field (inject a bare prefix when absent so
 // field-less items are still isolated per container), then strip the prefix
 // from any returned attributes.
 static OSStatus iv_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
+    IVLogKeychainOp(@"add", attributes ? (__bridge NSDictionary *)attributes : nil);
     CFDictionaryRef q = IVCopyNamespacedQuery(attributes, YES);
     OSStatus st = orig_SecItemAdd(q, result);
     CFRelease(q);
@@ -176,6 +218,7 @@ static OSStatus iv_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
 //    still never surfaces another container's item.
 static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result) {
     NSDictionary *q = query ? (__bridge NSDictionary *)query : nil;
+    IVLogKeychainOp(@"read", q);
 
     // Passthrough for everything we don't namespace.
     CFStringRef field = IVNamespaceField(q);
@@ -254,6 +297,7 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
 // field value, the payload too. injectWhenAbsent=YES keeps symmetry with Add so
 // a field-less item added earlier is found by the bare prefix.
 static OSStatus iv_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
+    IVLogKeychainOp(@"update", query ? (__bridge NSDictionary *)query : nil);
     CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
     NSMutableDictionary *upd = attributesToUpdate
         ? [(__bridge NSDictionary *)attributesToUpdate mutableCopy] : nil;
@@ -276,6 +320,7 @@ static OSStatus iv_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attribut
 // field-less delete to THIS container's bare-prefix items and never touches
 // other containers' field-keyed items — a deliberately safe trade-off.
 static OSStatus iv_SecItemDelete(CFDictionaryRef query) {
+    IVLogKeychainOp(@"delete", query ? (__bridge NSDictionary *)query : nil);
     CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
     OSStatus st = orig_SecItemDelete(q);
     CFRelease(q);
@@ -365,6 +410,36 @@ static OSStatus IVRawDelete(CFDictionaryRef q) {
     }
     IVLog(@"Keychain: purged %ld item(s) with prefix=%@", (long)deleted, prefix);
     return deleted;
+}
+
+// Count (without deleting) namespaced password items whose service/server begins
+// with `prefix`. Used to VERIFY a purge actually cleared everything — a non-zero
+// residue after resetAll means the reset only partially wiped credentials and
+// must be reported honestly, not silently claimed as success.
++ (NSInteger)countItemsWithPrefix:(NSString *)prefix {
+    if (prefix.length == 0) return 0;
+    NSInteger n = 0;
+    NSArray *classes = @[ (__bridge id)kSecClassGenericPassword,
+                          (__bridge id)kSecClassInternetPassword ];
+    for (id cls in classes) {
+        NSDictionary *q = @{ (__bridge id)kSecClass:            cls,
+                             (__bridge id)kSecMatchLimit:       (__bridge id)kSecMatchLimitAll,
+                             (__bridge id)kSecReturnAttributes: (__bridge id)kCFBooleanTrue };
+        CFTypeRef raw = NULL;
+        OSStatus st = IVRawCopyMatching((__bridge CFDictionaryRef)q, &raw);
+        if (st != errSecSuccess || !raw) { if (raw) CFRelease(raw); continue; }
+        if ([(__bridge id)raw isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in (__bridge NSArray *)raw) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                id svc = item[(__bridge id)kSecAttrService];
+                id srv = item[(__bridge id)kSecAttrServer];
+                if (([svc isKindOfClass:[NSString class]] && [svc hasPrefix:prefix]) ||
+                    ([srv isKindOfClass:[NSString class]] && [srv hasPrefix:prefix])) n++;
+            }
+        }
+        CFRelease(raw);
+    }
+    return n;
 }
 
 @end

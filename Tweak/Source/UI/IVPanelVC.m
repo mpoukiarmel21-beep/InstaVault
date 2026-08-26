@@ -53,6 +53,12 @@
     self.table.delegate = self;
     [self.table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"c"];
     self.table.tableFooterView = [self makeResetFooter];
+    // If the app launched degraded (isolation could not be applied and we fell
+    // back to the REAL account), warn loudly at the top so the user does not log
+    // in thinking they are inside a container.
+    if ([IVContainerStore shared].isolationDegraded) {
+        self.table.tableHeaderView = [self makeDegradedBanner];
+    }
     [self.view addSubview:self.table];
 
     for (NSString *n in @[ kIVContainersChanged, kIVActiveChanged ]) {
@@ -264,6 +270,28 @@
                                                        preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
+}
+
+- (UIView *)makeDegradedBanner {
+    CGFloat w = self.view.bounds.size.width;
+    UIView *wrap = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 96)];
+    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(20, 12, w - 40, 72)];
+    card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    card.backgroundColor = [UIColor.systemRedColor colorWithAlphaComponent:0.18];
+    card.layer.cornerRadius = 14.0;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    card.layer.borderWidth = 1.0;
+    card.layer.borderColor = [UIColor.systemRedColor colorWithAlphaComponent:0.55].CGColor;
+
+    UILabel *l = [[UILabel alloc] initWithFrame:CGRectInset(card.bounds, 14, 10)];
+    l.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    l.numberOfLines = 0;
+    l.textColor = IVTheme.primaryText;
+    l.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    l.text = @"⚠️ Isolation inactive — vous êtes sur le compte réel. Ne vous connectez pas ici ; fermez complètement l'app puis rouvrez-la.";
+    [card addSubview:l];
+    [wrap addSubview:card];
+    return wrap;
 }
 
 - (UIView *)makeResetFooter {

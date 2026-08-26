@@ -65,7 +65,22 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
         NSData *ad = [NSData dataWithContentsOfFile:[IVPaths activeFile]];
         NSDictionary *adict = ad ? [NSPropertyListSerialization propertyListWithData:ad options:0 format:NULL error:NULL] : nil;
         NSString *cid = [adict isKindOfClass:[NSDictionary class]] ? adict[@"activeCID"] : nil;
-        _activeCID = ([cid isKindOfClass:[NSString class]] && [self _containerForCIDLocked:cid]) ? [cid copy] : kIVDefaultCID;
+
+        // Distinguish a legitimate default launch from a non-default cid we could
+        // NOT resolve (corrupt/partial containers.plist): the latter is dangerous —
+        // silently degrading to default runs Instagram against the REAL keychain
+        // while the user believes they are inside their container. Flag it loudly
+        // so the UI can warn instead of pretending everything is fine.
+        BOOL cidUnresolvable = ([cid isKindOfClass:[NSString class]] &&
+                                ![cid isEqualToString:kIVDefaultCID] &&
+                                ![self _containerForCIDLocked:cid]);
+        if (cidUnresolvable) {
+            IVErr(@"load: active cid '%@' NOT found among %lu loaded container(s) — "
+                  @"falling back to default (REAL account). Possible corrupt containers.plist.",
+                  cid, (unsigned long)_list.count);
+            self.isolationDegraded = YES;
+        }
+        _activeCID = (!cidUnresolvable && [cid isKindOfClass:[NSString class]] && [self _containerForCIDLocked:cid]) ? [cid copy] : kIVDefaultCID;
 
         [self persistLocked];   // materialize default/active on first run
         IVLog(@"Loaded %lu containers, active=%@", (unsigned long)_list.count, _activeCID);
@@ -184,9 +199,17 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     [_lock lock];
     @try {
         if ([c.cid isEqualToString:_activeCID]) return NO;   // must switch away first
+        // Wipe data FIRST and only drop the container from the list if the wipe
+        // succeeded — so the list never claims a container is gone while its disk
+        // tree or namespaced keychain items linger (a future cid reuse could then
+        // inherit them).
+        if (![self deleteContainerDataLocked:c.cid]) {
+            IVErr(@"removeContainer: data wipe failed for %@ — keeping it in the list", c.cid);
+            return NO;
+        }
         [_list removeObject:c];
-        [self deleteContainerDataLocked:c.cid];
         if (![self persistLocked]) {
+            [_list addObject:c];   // roll back list so memory == on-disk plist
             IVErr(@"removeContainer: persist failed for %@ (data already deleted)", c.cid);
             return NO;
         }
@@ -233,38 +256,59 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 }
 
 - (BOOL)resetAll {
+    BOOL ok = YES;
+    BOOL persisted = NO;
     [_lock lock];
     @try {
         for (IVContainer *c in [_list copy]) {
-            if (!c.isDefault) [self deleteContainerDataLocked:c.cid];
+            if (!c.isDefault) ok = [self deleteContainerDataLocked:c.cid] && ok;
         }
         IVContainer *def = [self _containerForCIDLocked:kIVDefaultCID] ?: [IVContainer defaultContainer];
         [_list removeAllObjects];
         [_list addObject:def];
         _activeCID = kIVDefaultCID;
-        if (![self persistLocked]) return NO;
+        persisted = [self persistLocked];
+        if (!persisted) ok = NO;
         // Belt-and-suspenders: sweep EVERY namespaced keychain item ("IV:" covers
         // all containers), catching any whose on-disk record was already lost so
         // no orphan credential survives a full reset.
         [IVKeychainHook purgeItemsWithPrefix:@"IV:"];
+        // Then VERIFY: re-enumerate and confirm zero "IV:" items remain. A residue
+        // means the wipe was only partial — report it honestly rather than claiming
+        // a clean reset the UI would present as success.
+        NSInteger residue = [IVKeychainHook countItemsWithPrefix:@"IV:"];
+        if (residue > 0) {
+            IVErr(@"resetAll: %ld namespaced keychain item(s) survived the purge", (long)residue);
+            ok = NO;
+        }
     } @finally { [_lock unlock]; }
-    [self postOnMain:kIVContainersChanged];
-    [self postOnMain:kIVActiveChanged];
-    IVLog(@"Global reset complete");
-    return YES;
+    if (persisted) {
+        [self postOnMain:kIVContainersChanged];
+        [self postOnMain:kIVActiveChanged];
+    }
+    IVLog(@"Global reset %@", ok ? @"complete" : @"INCOMPLETE (see errors above)");
+    return ok;
 }
 
-- (void)deleteContainerDataLocked:(NSString *)cid {
+// Wipe one container's on-disk tree AND its namespaced keychain items. Returns NO
+// if the disk tree existed but could not be removed, so callers (resetAll /
+// removeContainer) can report a partial wipe instead of silently swallowing it.
+- (BOOL)deleteContainerDataLocked:(NSString *)cid {
+    BOOL ok = YES;
     NSString *root = [IVPaths containerRootForCID:cid];
     NSFileManager *fm = [NSFileManager defaultManager];
     if ([fm fileExistsAtPath:root]) {
         NSError *err = nil;
-        if (![fm removeItemAtPath:root error:&err]) IVErr(@"delete container data failed %@: %@", cid, err);
+        if (![fm removeItemAtPath:root error:&err]) {
+            IVErr(@"delete container data failed %@: %@", cid, err);
+            ok = NO;
+        }
     }
     // Also wipe this container's namespaced keychain items (login/session), or a
     // deleted container's credentials would linger in the shared keychain and a
     // future container that happened to reuse the cid could inherit them.
     [IVKeychainHook purgeItemsWithPrefix:IVKeychainPrefixForCID(cid)];
+    return ok;
 }
 
 - (void)postOnMain:(NSString *)name {

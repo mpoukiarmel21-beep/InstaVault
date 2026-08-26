@@ -22,6 +22,13 @@ extern NSString *const kIVActiveChanged;       // active container changed
 @property (nonatomic, readonly, nullable) IVContainer *activeContainer;
 @property (nonatomic, readonly, copy) NSString *activeCID;
 
+/// Runtime-only (never persisted): YES when the app launched in a DEGRADED state —
+/// a non-default container was requested but could not be honored (its cid was
+/// unresolvable at load, or Bootstrap's isolation apply failed and reverted to the
+/// real sandbox). In that state the app is running on the REAL account/keychain, so
+/// the UI must warn the user not to log in thinking they are isolated.
+@property (nonatomic, assign) BOOL isolationDegraded;
+
 /// Load from disk. Creates+persists the default container on first run.
 /// Safe to call once early in the constructor.
 - (void)load;

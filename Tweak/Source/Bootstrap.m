@@ -62,6 +62,9 @@ static void IVBootstrap(void) {
                 // Roll back any partial redirect so the launch runs consistently
                 // on the real sandbox rather than half-isolated (split-brain leak).
                 [IVHomeRedirect revertToRealHome];
+                // Flag the degraded launch so the UI warns the user: a non-default
+                // container was requested but we are now on the REAL account/keychain.
+                store.isolationDegraded = YES;
                 IVErr(@"Isolation FAILED for %@ (home=%d key=%d) — reverted to real sandbox to avoid split-brain leak",
                       active.cid, homeOK, keyOK);
             }

@@ -31,6 +31,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// default container too (falls back to the real keychain functions).
 + (NSInteger)purgeItemsWithPrefix:(NSString *)prefix;
 
+/// Count (without deleting) namespaced password items whose service/server begins
+/// with `prefix`. Used after a purge to verify nothing survived: a non-zero result
+/// means the wipe was only partial and the caller must report failure.
++ (NSInteger)countItemsWithPrefix:(NSString *)prefix;
+
 @end
 
 NS_ASSUME_NONNULL_END

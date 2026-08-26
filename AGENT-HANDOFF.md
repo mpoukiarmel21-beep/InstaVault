@@ -12,23 +12,36 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : lot post-test #86 — (1) **bug prioritaire login
-par conteneur** (compte « Paris » qui tourne sur connexion après un aller-retour via
-« Nice ») : namespacing keychain étendu aux **internet-password** (`kSecAttrServer`),
-pas seulement generic-password ; (2) renommage UI **InstaVault → Whamscale** ; (3)
-menu (`IVPanelVC`) redessiné en **thème sombre** + lignes translucides ; (4) nouvelle
-**feuille d'actions maison** (`IVActionSheet`) sombre à la place de l'`UIAlertController` ;
-(5) modèle d'appareil par conteneur **vérifié** (déjà déterministe, inchangé) ; (6)
-purge keychain sur remove/reset **câblée**. Rebuild CI en cours (voir Journal).
+Claude Code (Opus) — 2026-08-26 : **lot durcissement post-vérification #87**. Après
+build-87 (fix internet-password + Whamscale + menu sombre + IVActionSheet), une
+vérification adversariale multi-agents a jugé le fix login **« incomplet »** (le leak
+internet-password nommé est bien fermé, mais des classes keychain non-password et des
+chemins d'échec silencieux subsistent). Ce lot applique les correctifs **sûrs** : (a)
+**reset honnête + vérifié** (`resetAll`/`removeContainer`/`deleteContainerDataLocked`
+propagent l'échec disque + re-comptent le keychain après purge via `countItemsWithPrefix`) ;
+(b) **fail-loud isolation dégradée** (bannière rouge dans `IVPanelVC` si un conteneur
+non-défaut n'a pas pu être isolé — cid non résolu au load ou rebind KO) ; (c)
+**diagnostics keychain** (log dédupliqué classe+attributs par op SecItem, aucune valeur
+secrète). Le namespacing spéculatif de `kSecClassKey` est **volontairement différé** :
+le diagnostic dira d'abord si Instagram y range la session. **Livré : build-89**
+(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-89/InstaVault.ipa`,
+324 964 577 o). Base IG identique à build-87 (INSTAGRAM.ipa) — seul le dylib change.
 
 ## Prochaine étape
-**Rebuild CI déclenché** après le lot #86. Récupérer l'URL `build-<run>/InstaVault.ipa`
-du run réussi, installer via Sideloadly, puis **re-tester en priorité le bug login** :
-créer un compte dans le conteneur A, en créer/connecter un second dans B, basculer sur B,
-rebasculer sur A → le compte A **doit rester connecté** (plus de « tourne sur connexion »).
-Vérifier aussi : (2) le nom « Whamscale » partout dans l'UI ; (3)/(4) thème sombre +
-feuille d'actions lisibles ; (5) chaque conteneur affiche son propre n° de modèle ;
-(6) « Tout réinitialiser » efface bien tous les conteneurs + leurs identifiants keychain.
+**Build livré : build-89** →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-89/InstaVault.ipa`.
+Installer via Sideloadly, puis :
+1. **Re-tester le bug login Paris↔Nice↔Paris** — Paris doit rester connecté. Si ça
+   tourne encore, **récupérer le log** `<realHome>/Documents/InstaVault/logs/instavault.log`
+   (accessible via l'app Fichiers) et repérer les lignes `KC …` : si on y voit
+   `add key […]` ou `add idnt […]` pendant la connexion, la session vit dans une classe
+   **non-namespacée** → prochain correctif ciblé (étendre le namespacing à cette classe).
+   Si on ne voit que `genp`/`inet`, le fix build-87 suffit et la cause est ailleurs.
+2. **« Tout réinitialiser »** — doit effacer tous les conteneurs + identifiants ; en cas
+   de wipe partiel, l'UI affiche désormais « Réinitialisation incomplète » (au lieu de
+   prétendre le succès).
+3. Vérifier aussi : nom « Whamscale » partout, thème sombre + feuille d'actions lisibles,
+   n° de modèle par conteneur.
 
 ## Blocages / risques
 - Push + build CI **autorisés par l'utilisateur** pour ce build (« compile tout ça
@@ -42,6 +55,57 @@ feuille d'actions lisibles ; (5) chaque conteneur affiche son propre n° de mod�
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-26 — Claude Code (Opus) — durcissement post-vérification : reset vérifié, fail-loud isolation, diagnostics keychain
+Après livraison de build-87, une **vérification adversariale à 4 agents** (workflow) a
+conclu **« fix-incomplete » (confiance moyenne)** sur le bug login : le leak
+internet-password nommé est réellement fermé (2 audits sur 3 « correct »), mais trois
+risques restent ouverts et peuvent reproduire le « spinning on login » :
+1. **Classes keychain non-password partagées** (`IVKeychainHook.m` — `IVNamespaceField`
+   renvoie NULL pour `kSecClassKey`/`Identity`/`Certificate`). Si Instagram range du
+   matériel de session/attestation lié à l'appareil dans une clé, il reste partagé
+   (dernier écrivain gagne) → Nice écrase la clé dont Paris dépend. **Invérifiable depuis
+   Windows** (nécessite un dump keychain on-device).
+2. **UI conteneur affichée même quand l'isolation a échoué** (`Bootstrap.m`) → risque de
+   se connecter sur le **vrai compte** en croyant être isolé.
+3. **cid actif non résolvable → repli silencieux sur défaut** (`IVContainerStore.load`).
+
+**Correctifs appliqués ce lot (sûrs, ne touchent pas le chemin password qui marche) :**
+- **Reset honnête + vérifié (#6)** — `deleteContainerDataLocked:` renvoie désormais `BOOL`
+  (échec de `removeItemAtPath:` propagé, plus avalé) ; `resetAll` et `removeContainer`
+  accumulent ce résultat ; `resetAll` re-compte le keychain après purge via le nouveau
+  `+countItemsWithPrefix:` et renvoie `NO` s'il reste des items `IV:`. `removeContainer`
+  ne retire le conteneur de la liste **que si** le wipe a réussi. Résultat : « Tout
+  réinitialiser » ne peut plus renvoyer un faux succès ; l'UI affiche « Réinitialisation
+  incomplète » quand c'est le cas.
+- **Fail-loud isolation dégradée (#2, #3 ci-dessus)** — nouveau flag runtime
+  `IVContainerStore.isolationDegraded` (non persisté), mis à `YES` dans `Bootstrap` (rebind
+  KO) **et** dans `load` (cid non-défaut non résolvable, avec `IVErr` distinct). `IVPanelVC`
+  affiche alors une **bannière rouge** : « Isolation inactive — vous êtes sur le compte
+  réel. Ne vous connectez pas ici… ». Empêche une connexion silencieuse sur le vrai compte.
+- **Diagnostics keychain (#1)** — `IVLogKeychainOp()` logge **une fois par signature**
+  (op + classe + attributs présents + NS/raw) à chaque `SecItemAdd/CopyMatching/Update/
+  Delete`, **sans jamais lire de valeur secrète**. Le prochain test on-device produira une
+  carte d'usage keychain d'Instagram : si des ops `key`/`idnt` apparaissent pendant la
+  connexion, la cause #1 est confirmée et le correctif ciblé sera d'étendre le namespacing
+  à cette classe. Sinon, le fix build-87 suffit.
+
+**Volontairement différé :** le namespacing de `kSecClassKey` (via `kSecAttrApplicationTag`)
+n'est **pas** appliqué à l'aveugle — la couche keychain a tué 4 projets précédents, et les
+attributs de clés (CFData, `kSecAttrApplicationLabel` dérivé par le système) rendent un
+namespacing mal ciblé régressif. On instrumente d'abord, on corrige ensuite avec des données
+réelles.
+
+Fichiers : `IVKeychainHook.{h,m}` (diagnostics + `countItemsWithPrefix:`),
+`IVContainerStore.{h,m}` (reset vérifié + `isolationDegraded` + fail-loud load),
+`Bootstrap.m` (flag dégradé), `IVPanelVC.m` (bannière). Aucun nouveau fichier → Makefile
+inchangé. Commit `8a7ca18` sur `feature/v2-build`. **Rebuild CI : run 32950003820 = SUCCÈS
+→ build-89** (`InstaVault.ipa`, 324 964 577 o), base IG = **`INSTAGRAM.ipa`** (release
+`v1.0-ipa`, URL directe de l'asset) — identique à build-87, seul le dylib change.
+Lien : https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-89/InstaVault.ipa
+⚠️ Un 1er run (32949584425 → build-88) avait injecté par erreur un **autre** `.ipa` de base
+(`com.burbn.instagram_442…ipa`) : **build-88 est abandonné, ne pas l'installer**. Règle
+verrouillée : la base est **toujours `INSTAGRAM.ipa`**, jamais un autre asset du release.
 
 ### 2026-08-26 — Claude Code (Opus) — fix login par conteneur (keychain internet-password) + Whamscale + menu sombre + IVActionSheet
 Retour test appareil : « conteneur Paris (compte connecté), puis conteneur Nice

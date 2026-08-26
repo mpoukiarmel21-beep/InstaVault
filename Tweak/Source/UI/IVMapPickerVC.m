@@ -1,4 +1,5 @@
 #import "IVMapPickerVC.h"
+#import "IVTheme.h"
 #import "../Core/IVContainer.h"
 #import "../Core/IVContainerStore.h"
 #import <MapKit/MapKit.h>
@@ -51,13 +52,13 @@
     self.commit.translatesAutoresizingMaskIntoConstraints = NO;
     [self.commit setTitle:@"Activer cette position" forState:UIControlStateNormal];
     [self.commit setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    // White on systemPurple is ~4.1:1 — below AA for normal text, but ≥18pt bold
-    // qualifies as "large text" (AA 3:1), which it passes. Scale with Dynamic Type.
+    // White on the accent violet clears AA for large text (≥18pt bold, 3:1);
+    // the accent is deeper than systemPurple so contrast is a touch better still.
     UIFont *commitFont = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
     self.commit.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline]
                                    scaledFontForFont:commitFont];
     self.commit.titleLabel.adjustsFontForContentSizeCategory = YES;
-    self.commit.backgroundColor = UIColor.systemPurpleColor;
+    self.commit.backgroundColor = IVTheme.accent;
     self.commit.layer.cornerRadius = 14;
     self.commit.layer.cornerCurve = kCACornerCurveContinuous;
     [self.commit addTarget:self action:@selector(doCommit) forControlEvents:UIControlEventTouchUpInside];
@@ -196,7 +197,7 @@
         [mapView dequeueReusableAnnotationViewWithIdentifier:@"p"];
     if (!v) {
         v = [[MKMarkerAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:@"p"];
-        v.markerTintColor = UIColor.systemPurpleColor;
+        v.markerTintColor = IVTheme.accent;
         v.canShowCallout = YES;
     }
     v.annotation = annotation;

@@ -19,6 +19,7 @@ InstaVault_FILES = \
 	Source/Isolation/IVKeychainHook.m \
 	Source/Spoof/IVDeviceSpoof.m \
 	Source/Spoof/IVLocationSpoof.m \
+	Source/UI/IVTheme.m \
 	Source/UI/IVGlass.m \
 	Source/UI/IVFloatingButton.m \
 	Source/UI/IVPanelVC.m \

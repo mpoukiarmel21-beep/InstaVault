@@ -1,5 +1,6 @@
 #import "IVCreateVC.h"
 #import "IVMapPickerVC.h"
+#import "IVTheme.h"
 #import "../Core/IVContainer.h"
 #import "../Core/IVContainerStore.h"
 #import "../Spoof/IVDeviceSpoof.h"
@@ -24,7 +25,7 @@
     NSString *m = [IVDeviceSpoof availableModels][ip.row];
     c.textLabel.text = m;
     c.accessoryType = [m isEqualToString:self.selected] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    c.tintColor = UIColor.systemPurpleColor;
+    c.tintColor = IVTheme.accent;
     return c;
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)ip {
@@ -57,6 +58,7 @@
     [super viewDidLoad];
     self.title = self.editing ? @"Modifier" : @"Nouveau conteneur";
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.navigationController.navigationBar.tintColor = IVTheme.accent;
 
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel

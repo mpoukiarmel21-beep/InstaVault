@@ -1,6 +1,7 @@
 #import "IVPanelVC.h"
 #import "IVCreateVC.h"
 #import "IVMapPickerVC.h"
+#import "IVTheme.h"
 #import "../Core/IVContainer.h"
 #import "../Core/IVContainerStore.h"
 #import "../Spoof/IVDeviceSpoof.h"
@@ -20,7 +21,7 @@
     // Large-title nav with a purple accent for the bar buttons.
     self.navigationController.navigationBar.prefersLargeTitles = YES;
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;
-    self.navigationController.navigationBar.tintColor = UIColor.systemPurpleColor;
+    self.navigationController.navigationBar.tintColor = IVTheme.accent;
 
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
@@ -92,9 +93,9 @@
     content.secondaryText = sub;
     content.secondaryTextProperties.color = UIColor.secondaryLabelColor;
     content.secondaryTextProperties.font = [UIFont systemFontOfSize:13];
-    // Leading indicator doubles as the "active" marker (filled purple) vs idle.
+    // Leading indicator doubles as the "active" marker (filled accent) vs idle.
     content.image = [UIImage systemImageNamed:active ? @"checkmark.circle.fill" : @"circle"];
-    content.imageProperties.tintColor = active ? UIColor.systemPurpleColor : UIColor.tertiaryLabelColor;
+    content.imageProperties.tintColor = active ? IVTheme.accent : UIColor.tertiaryLabelColor;
     content.imageProperties.preferredSymbolConfiguration =
         [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightRegular];
     content.imageToTextPadding = 12.0;
@@ -102,7 +103,7 @@
 
     // Consistent "more actions" affordance on every row.
     cell.accessoryType = UITableViewCellAccessoryDetailDisclosureButton;
-    cell.tintColor = UIColor.systemPurpleColor;
+    cell.tintColor = IVTheme.accent;
     return cell;
 }
 

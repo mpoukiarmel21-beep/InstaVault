@@ -1,6 +1,7 @@
 #import "IVFloatingButton.h"
 #import "IVPanelVC.h"
 #import "IVGlass.h"
+#import "IVTheme.h"
 
 #pragma mark - Passthrough overlay window
 
@@ -48,10 +49,10 @@ static NSString *const kIVBtnCenterKey = @"IVFloatingButtonCenter";
 static const CGFloat kIVButtonSize = 60.0;
 static const CGFloat kIVPad = 18.0;   // shadow padding around the button
 
-@interface IVFloatingButton ()
+@interface IVFloatingButton () <UIAdaptivePresentationControllerDelegate>
 @property (nonatomic, strong) IVOverlayWindow *window;
 @property (nonatomic, strong) UIView *container;      // button container (live area)
-@property (nonatomic, weak)   UIViewController *presentedNav;   // guard double-present
+@property (nonatomic, strong) UIViewController *presentedNav;   // guard double-present
 @end
 
 @implementation IVFloatingButton
@@ -90,10 +91,12 @@ static const CGFloat kIVPad = 18.0;   // shadow padding around the button
     w.rootViewController = root;
 
     UIView *container = [[UIView alloc] initWithFrame:CGRectMake(kIVPad, kIVPad, kIVButtonSize, kIVButtonSize)];
-    container.layer.shadowColor = UIColor.blackColor.CGColor;
-    container.layer.shadowOpacity = 0.28;
-    container.layer.shadowRadius = 10.0;
-    container.layer.shadowOffset = CGSizeMake(0, 4);
+    // Soft violet glow instead of a flat black drop shadow — reads as a premium
+    // floating control rather than a plain circle.
+    container.layer.shadowColor = IVTheme.accentDeep.CGColor;
+    container.layer.shadowOpacity = 0.45;
+    container.layer.shadowRadius = 12.0;
+    container.layer.shadowOffset = CGSizeMake(0, 6);
     // Explicit circular shadow path: without it the layer derives a rectangular
     // shadow from the (square) bounds, so a round button casts a square shadow.
     container.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:container.bounds
@@ -103,14 +106,14 @@ static const CGFloat kIVPad = 18.0;   // shadow padding around the button
     // top always receives the tap. An interactive UIGlassEffect installs its own
     // gesture/interaction that could swallow the tap (the old "rien ne se passe").
     UIVisualEffectView *glass = [IVGlass glassViewWithCornerRadius:kIVButtonSize / 2.0
-                                                              tint:[UIColor colorWithRed:0.46 green:0.29 blue:0.94 alpha:1.0]
+                                                              tint:IVTheme.accent
                                                        interactive:NO];
     glass.frame = container.bounds;
     glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     glass.userInteractionEnabled = NO;
     // Hairline edge so the glass reads as a crisp disc over busy content.
     glass.layer.borderWidth = 0.5;
-    glass.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+    glass.layer.borderColor = IVTheme.hairline.CGColor;
     [container addSubview:glass];
 
     // The real interactive layer: a UIButton reliably turns a stationary touch
@@ -225,7 +228,16 @@ static const CGFloat kIVPad = 18.0;   // shadow padding around the button
     if (self.presentedNav && self.presentedNav.presentingViewController) return;
 
     UIViewController *top = IVTopViewController();
-    if (!top) return;
+    // Never present onto a controller that is busy — already presenting
+    // something, or mid-transition. UIKit silently drops such a request; if we
+    // had already hidden the button window, it would then stay hidden forever
+    // with no tap target to bring it back. That was the "after I switch to the
+    // container I just created, the menu button stops working" report: closing
+    // the panel and re-tapping while the previous sheet was still dismissing (or
+    // while a lingering alert owned the top VC) hid the button behind a present
+    // that never happened. Bail while the button is still visible; the next tap
+    // retries once the top VC is free.
+    if (!top || top.presentedViewController || top.isBeingPresented || top.isBeingDismissed) return;
 
     // Press feedback (skipped under Reduce Motion).
     if (!UIAccessibilityIsReduceMotionEnabled()) {
@@ -238,15 +250,33 @@ static const CGFloat kIVPad = 18.0;   // shadow padding around the button
 
     IVPanelVC *panel = [IVPanelVC new];
     __weak typeof(self) ws = self;
-    panel.onClose = ^{ ws.window.hidden = NO; };   // restore the button when the menu closes
+    panel.onClose = ^{ [ws showButton]; };   // restore the button when the menu closes
 
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:panel];
     nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    nav.presentationController.delegate = self;   // backup re-show on swipe-dismiss
     self.presentedNav = nav;
 
-    // Hide the button while the menu is up so it doesn't float over the sheet.
-    self.window.hidden = YES;
-    [top presentViewController:nav animated:YES completion:nil];
+    // Hide the button only once the sheet is actually on screen (in the present
+    // completion). If the present is ever a no-op, the window is never stranded
+    // hidden behind a menu that isn't there.
+    [top presentViewController:nav animated:YES completion:^{
+        ws.window.hidden = YES;
+    }];
+}
+
+// Idempotent: bring the button back and clear the presentation guard. Called
+// from the panel's onClose (Close button) and the presentation delegate (swipe),
+// so the button always returns no matter how the menu was dismissed.
+- (void)showButton {
+    self.window.hidden = NO;
+    self.presentedNav = nil;
+}
+
+#pragma mark - UIAdaptivePresentationControllerDelegate
+
+- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
+    [self showButton];
 }
 
 @end

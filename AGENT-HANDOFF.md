@@ -14,13 +14,15 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 ## En cours
 Claude Code (Opus) — 2026-08-26 : correctifs UI post-test appareil #84 (le tap du
 bouton flottant n'ouvrait rien ; bouton + menu jugés mal designés). Correctifs
-appliqués sur `feature/v2-build`, rebuild CI en cours.
+appliqués sur `feature/v2-build`, **rebuild CI #85 = SUCCÈS**. IPA prête (voir
+Prochaine étape).
 
 ## Prochaine étape
-**Rebuild CI en cours** (correctifs tap + design). Quand le run réussit, installer
-la nouvelle IPA via Sideloadly et **re-tester en priorité** : (0) **le tap du bouton
-ouvre bien le menu** (bug corrigé ce run — UIButton réel + glass non-interactif +
-recherche du top-VC robuste) ; (1) pas de crash à l'ouverture ; (2) pas d'erreur
+**Build CI #85 réussi.** Nouvelle IPA :
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-85/InstaVault.ipa`
+Installer via Sideloadly (cert 7 j) et **re-tester en priorité** : (0) **le tap du
+bouton ouvre bien le menu** (bug corrigé ce run — UIButton réel + glass non-interactif
++ recherche du top-VC robuste) ; (1) pas de crash à l'ouverture ; (2) pas d'erreur
 Sideloadly ; (3) conteneur persiste après fermeture/réouverture ; (4) login persiste
 (correctif keychain enum — mur historique) ; (5) GPS — zoom + recherche ville + le
 faux fix se met à jour et ne fuit pas le vrai GPS. Remonter les résultats pour
@@ -74,7 +76,8 @@ homogène sur toutes les lignes. Logique du panel inchangée.
 
 Fichiers : `IVFloatingButton.m`, `IVPanelVC.h` (+`onClose`), `IVPanelVC.m`. Build local
 impossible (Windows) → **rebuild CI** sur `feature/v2-build`, IPA source `INSTAGRAM.ipa`
-(release `v1.0-ipa`, URL directe).
+(release `v1.0-ipa`, URL directe). **Run #85 = SUCCÈS** → `build-85/InstaVault.ipa`
+(~309 Mo). Reste = re-test appareil (tap prioritaire).
 
 ### 2026-08-26 — Claude Code (Opus) — commit tree v2 + déclenchement build CI
 Sur demande utilisateur explicite (« Vas-y, tu peux compiler tout ça sur GitHub

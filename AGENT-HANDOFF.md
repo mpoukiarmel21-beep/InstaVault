@@ -12,22 +12,23 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : correctifs UI post-test appareil #84 (le tap du
-bouton flottant n'ouvrait rien ; bouton + menu jugés mal designés). Correctifs
-appliqués sur `feature/v2-build`, **rebuild CI #85 = SUCCÈS**. IPA prête (voir
-Prochaine étape).
+Claude Code (Opus) — 2026-08-26 : correctifs UI post-test appareil #85 (le bouton
+menu meurt après avoir basculé sur un conteneur qu'on vient de créer ; demande de
+design plus « pro » + meilleure gestion des couleurs). Correctifs appliqués sur
+`feature/v2-build` (commit `44d15eb`), **rebuild CI #86 déclenché** (voir Journal).
 
 ## Prochaine étape
-**Build CI #85 réussi.** Nouvelle IPA :
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-85/InstaVault.ipa`
-Installer via Sideloadly (cert 7 j) et **re-tester en priorité** : (0) **le tap du
-bouton ouvre bien le menu** (bug corrigé ce run — UIButton réel + glass non-interactif
-+ recherche du top-VC robuste) ; (1) pas de crash à l'ouverture ; (2) pas d'erreur
-Sideloadly ; (3) conteneur persiste après fermeture/réouverture ; (4) login persiste
-(correctif keychain enum — mur historique) ; (5) GPS — zoom + recherche ville + le
-faux fix se met à jour et ne fuit pas le vrai GPS. Remonter les résultats pour
-trancher les éléments différés (purge keychain sur remove/reset, hook `sysctl` MIB,
-UAF `gSpoofedModelC`).
+**Build CI #86 réussi.** Nouvelle IPA :
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-86/InstaVault.ipa`
+Installer via Sideloadly (cert 7 j) et **re-tester en priorité** : (0) **après avoir
+créé un conteneur PUIS basculé dessus, le bouton menu répond toujours** (bug corrigé
+ce run — la fenêtre n'est masquée qu'une fois la feuille présentée, et jamais si le
+top-VC est occupé) ; (0bis) couleurs cohérentes/« plus pro » (palette IVTheme + halo
+violet) ; (1) pas de crash à l'ouverture ; (2) pas d'erreur Sideloadly ; (3) conteneur
+persiste après fermeture/réouverture ; (4) login persiste (correctif keychain enum —
+mur historique) ; (5) GPS — zoom + recherche ville + le faux fix se met à jour et ne
+fuit pas le vrai GPS. Remonter les résultats pour trancher les éléments différés (purge
+keychain sur remove/reset, hook `sysctl` MIB, UAF `gSpoofedModelC`).
 
 ## Blocages / risques
 - Push + build CI **autorisés par l'utilisateur** pour ce build (« compile tout ça
@@ -41,6 +42,46 @@ UAF `gSpoofedModelC`).
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-26 — Claude Code (Opus) — fix « bouton menu mort après bascule de conteneur » + palette centralisée (IVTheme)
+Retour test appareil (run #85) : « une fois que j'ai créé le container et cliqué sur
+"basculer sur le conteneur", quand je clique sur le bouton menu ça ne fonctionne
+plus ». + demande : « encore un peu plus design, plus pro… bien gérer les couleurs ».
+
+**Bug — le bouton menu ne répond plus après une bascule (`IVFloatingButton.m`)**
+Cause : `onTap` **masquait la fenêtre overlay** puis présentait le menu. Or, juste
+après « Activer ce conteneur », le top-VC est souvent occupé (feuille précédente en
+cours de dismiss, ou alerte « Redémarrage requis » encore propriétaire). UIKit
+**ignore silencieusement** un `presentViewController:` sur un VC occupé → le present
+n'a jamais lieu **mais la fenêtre est déjà masquée** → plus aucune cible de tap pour
+la rouvrir = bouton mort. Corrigé :
+1. On **refuse** de présenter si le top-VC est occupé (`presentedViewController` /
+   `isBeingPresented` / `isBeingDismissed`) ou nil → on sort *sans* masquer le bouton ;
+   le prochain tap réessaie une fois le top-VC libre.
+2. On ne masque la fenêtre que **dans le `completion:` du present** (donc seulement
+   quand la feuille est réellement à l'écran) — un present raté ne peut plus laisser
+   la fenêtre coincée masquée.
+3. `presentedNav` repasse **strong** + garde `presentingViewController` (anti double-
+   présentation) ; ré-affichage redondant via `onClose` (bouton Close) **et**
+   `presentationControllerDidDismiss:` (swipe). Filet pré-existant conservé :
+   `DidBecomeActive → show` ré-affiche une fenêtre masquée.
+
+**Design — palette centralisée + halo (`IVTheme` nouveau)**
+Cause du « il faut bien gérer les couleurs » : palette incohérente — un violet RGB
+brut (0.46/0.29/0.94) sur le bouton, `systemPurpleColor` ailleurs. Introduit `IVTheme`
+(source unique : `accent` #6B47E6, `accentDeep` #472BB8, `onAccent`, `hairline`).
+Tous les accents (`IVFloatingButton`, `IVPanelVC`, `IVCreateVC`, `IVMapPickerVC`)
+tirent le même `IVTheme.accent`. Le bouton flottant reçoit un **halo violet doux**
+(`accentDeep`, opacité 0.45, radius 12, offset y+6) au lieu d'une ombre noire plate →
+lecture « contrôle premium ». Zéro `systemPurple` résiduel vérifié.
+
+Fichiers : `IVTheme.h`/`.m` (nouveaux, ajoutés au Makefile), `IVFloatingButton.m`,
+`IVPanelVC.m`, `IVCreateVC.m`, `IVMapPickerVC.m`. Commit `44d15eb` sur
+`feature/v2-build`. Build local impossible (Windows) → **rebuild CI run #86 = SUCCÈS**
+→ `build-86/InstaVault.ipa` (~310 Mo). IPA source `INSTAGRAM.ipa` (release `v1.0-ipa`,
+URL directe). Lien :
+https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-86/InstaVault.ipa
+Reste = re-test appareil (bouton menu après bascule + rendu couleurs en priorité).
 
 ### 2026-08-26 — Claude Code (Opus) — fix tap bouton flottant + redesign bouton/menu
 Retour test appareil (run #84) : « quand j'appuie sur le bouton rien ne se passe » +

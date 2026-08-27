@@ -12,39 +12,49 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-27 (2e lot du jour) : **empreinte device unique par
-conteneur à la création + persistance login « à vie » + backstop fuite au retour
-depuis le panneau multitâche**. 3 intentions dérivées de la demande utilisatrice :
-- **(A)** chaque conteneur reçoit une **identité device DISTINCTE dès la création**
-  (modèle + version iOS dérivés d'une graine cid unique) au lieu que tous prennent
-  le modèle/iOS le plus récent (collision d'empreinte).
-- **(B)** le compte réapparaissait sur le **défaut** quand IG s'était fermé seul
-  mais que sa carte n'avait pas été **balayée** du multitâche, puis repris → garde
-  de conteneur périmé au premier plan (`exit(0)` → relance à froid propre).
-- **(C)** login **permanent** : re-stamp récursif de la protection fichier du
-  conteneur (session illisible verrouillée = fausse déconnexion « des heures après »).
-**Livré : build-95**
-(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-95/InstaVault.ipa`,
-325 013 133 o). Base IG = **`INSTAGRAM.ipa`** (release
-`v1.0-ipa`). Correctifs précédents (build-94 : P1/P2/P3) toujours en place.
+Claude Code (Opus) — 2026-08-27 (3e lot du jour) : **la réinitialisation
+déconnecte AUSSI le compte principal + confirmation que la suppression d'un
+conteneur nettoie tout sans impacter les autres (R1/R2/R3)**. 3 intentions
+dérivées de la demande utilisatrice :
+- **(R1)** après réinstallation de l'IPA (sans supprimer l'app d'abord), on
+  retombe sur le conteneur **par défaut** avec le même compte connecté →
+  comportement iOS normal (la réinstall conserve le data container) ; corrigé
+  par une vraie réinitialisation (R2), un nettoyage réellement propre exige de
+  supprimer l'app avant de réinstaller.
+- **(R2)** « Réinitialiser » ne supprimait pas toujours le compte : `resetAll`
+  ne touchait QUE les conteneurs, jamais la session du compte **principal/réel**
+  (hors conteneur). Ajout : effacement des surfaces disque réelles
+  (`realHome/Library/{Cookies,HTTPStorages,WebKit}`), purge du keychain réel
+  (items non préfixés `IV:`), vidage du **cookie jar vivant** `NSHTTPCookieStorage`,
+  puis **fermeture à froid** de l'app pour que la session en cours ne réécrive
+  pas par-dessus le nettoyage.
+- **(R3)** suppression d'un conteneur : **déjà correcte** — `deleteContainerDataLocked`
+  supprime l'arbre racine du conteneur (qui contient ses Cookies/HTTPStorages/
+  WebKit/prefs sous le HOME redirigé) + purge son keychain `IV:<cid>:`, sans
+  toucher aux autres conteneurs (préfixe/racine distincts). Documenté, aucun
+  changement de code.
+**Livré : build-96** (CI run 33062904189, `feature/v2-build`) — voir Journal.
+Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`). Correctifs précédents
+(build-94 P1/P2/P3, build-95 A/B/C) toujours en place.
 
 
 ## Prochaine étape
-**Build livré : build-95** →
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-95/InstaVault.ipa`.
-Installer via Sideloadly, puis vérifier les **3 nouveautés** de ce lot :
-1. **A — empreinte device unique à la création** : créer **plusieurs** conteneurs
-   d'affilée sans rien changer dans les feuilles → chacun doit proposer par défaut
-   un **modèle ET une version iOS DIFFÉRENTS** (plus tous « iPhone récent / iOS le
-   plus récent »). Vérifier via les réglages IG que modèle/série/iOS diffèrent.
-2. **B — retour depuis le multitâche sans balayer la carte** : se connecter dans un
-   conteneur, laisser IG se fermer seul (sans balayer sa carte), changer de conteneur
-   actif depuis le panneau, revenir sur IG depuis le multitâche → le compte ne doit
-   **jamais** réapparaître sur le **défaut** ; l'app doit relancer à froid le bon conteneur.
-3. **C — login « à vie »** : se connecter dans un conteneur, **verrouiller** le
-   téléphone plusieurs **heures**, revenir → la session doit **tenir** (aucune
-   re-saisie du mot de passe), même après un relancement background pendant le verrou.
-4. **Non-régression** des 3 bugs de build-94 (P1/P2/P3) et login/identité/langue/localisation.
+**Build livré : build-96 (CI verte ✓)** →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-96/InstaVault.ipa`
+(325 015 932 o). Installer via Sideloadly, puis vérifier les fixes de ce lot :
+1. **R2 — la réinitialisation déconnecte le compte principal** : être connecté sur
+   le conteneur **par défaut** (compte réel), taper « Réinitialiser » → l'alerte
+   annonce la déconnexion du principal + fermeture de l'app ; après « Fermer » et
+   réouverture, le compte par défaut doit être **déconnecté** (plus aucun cookie
+   Instagram sur le téléphone), et tous les conteneurs supprimés.
+2. **R3 — suppression d'un conteneur** : créer 2 conteneurs A et B, se connecter
+   dans chacun, supprimer A → A disparaît avec toutes ses données ; B et le
+   principal restent **intacts** (session, identité, langue conservées).
+3. **R1 — réinstallation** : rappel — réinstaller l'IPA par-dessus conserve le
+   compte par défaut (data container iOS préservé) ; pour repartir vraiment propre,
+   **supprimer l'app** puis réinstaller, OU utiliser « Réinitialiser » d'abord.
+4. **Non-régression** : build-94 (P1/P2/P3), build-95 (A empreinte unique / B garde
+   retour multitâche / C login « à vie »), login/identité/langue/localisation.
 
 
 
@@ -60,6 +70,53 @@ Installer via Sideloadly, puis vérifier les **3 nouveautés** de ce lot :
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-27 — Claude Code (Opus) — réinitialisation = déconnexion du compte principal + suppression conteneur confirmée (build-96)
+
+**Demande utilisatrice (verbatim)** : « Là je viens de réinstaller le fichier
+mais je suis directement tombé sur le conteneur par défaut qui a déjà le même
+compte, quand je clique sur réinitialise réinitialiser, le compte ne disparaît
+pas toujours alors que quand je t'ai dit quand je clique sur réinitialiser, ça
+doit réinitialiser tous les cookies de l'application dans le téléphone et quand
+je dois supprimer un conteneur, le container doit supprimer tous les coups
+[cookies] et le stockage qu'il a dû créer dans l'application sans impacter les
+autres règle-moi ces détails là »
+
+**Diagnostic (R1/R2/R3)** :
+- **R1** (retombe sur le défaut après réinstall) = comportement iOS attendu :
+  réinstaller un IPA sideloadé par-dessus (même bundle id, app non supprimée)
+  **conserve** le data container → cookies + keychain du compte réel survivent.
+  Remède = une vraie réinitialisation (R2) ; un départ 100 % propre exige de
+  **supprimer l'app** avant de réinstaller.
+- **R2** = vrai trou : `resetAll` supprimait les conteneurs et purgeait le
+  keychain `IV:` mais ne touchait **jamais** la session du compte principal/réel
+  (hors conteneur), qui vit dans `realHome/Library/{Cookies,HTTPStorages,WebKit}`
+  + le keychain **non** préfixé + le cookie jar en mémoire.
+- **R3** = **déjà correct** : la session d'un conteneur vit entièrement sous son
+  HOME redirigé (racine `realHome/Documents/Instances/<cid>`), donc
+  `removeItemAtPath:root` efface ses Cookies/HTTPStorages/WebKit/prefs, et
+  `purgeItemsWithPrefix:"IV:<cid>:"` son keychain — sans impact sur les autres
+  conteneurs (préfixe/racine distincts).
+
+**Correctifs livrés** :
+- `IVPaths +wipeRealSessionFiles` : supprime `realHome/Library/{Cookies,
+  HTTPStorages,WebKit}` (best-effort, log, jamais Caches ni le plan de contrôle).
+- `IVKeychainHook +purgeRealPasswordItems` : supprime tout item mot-de-passe
+  **réel** (non préfixé `IV:`) via les fns keychain brutes — l'inverse exact de
+  `purgeItemsWithPrefix:` ; ne touche jamais un item conteneur.
+- `IVContainerStore resetAll` : après la purge/vérif `IV:`, appelle
+  `wipeRealSessionFiles` + `purgeRealPasswordItems` + vide le
+  `NSHTTPCookieStorage` vivant.
+- `IVPanelVC confirmReset` : message mis à jour (déconnexion du principal +
+  fermeture de l'app) ; sur succès, **fermeture à froid** (`IVCloseAppForSwitch`)
+  pour que la session en cours ne réécrive pas par-dessus le nettoyage.
+
+**Build** : commit `2d02bde` poussé sur `feature/v2-build`, CI `build.yml`
+déclenchée (run **33062904189**, `ipa_url` = `INSTAGRAM.ipa` / release `v1.0-ipa`).
+→ **build-96 livré, CI verte ✓** :
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-96/InstaVault.ipa`
+(325 015 932 o). Aucun build local (Windows, pas de Theos).
+
 
 ### 2026-08-27 — Claude Code (Opus) — empreinte unique à la création + login « à vie » + backstop retour multitâche (build-95)
 

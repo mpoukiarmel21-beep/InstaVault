@@ -93,12 +93,22 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     NSMutableArray *arr = [NSMutableArray arrayWithCapacity:_list.count];
     for (IVContainer *c in _list) [arr addObject:c.toDict];
 
+    // Write the control plists lock-readable (CompleteUntilFirstUnlock), matching
+    // the control dir's protection (see IVPaths). Instagram's sandbox defaults new
+    // files to NSFileProtectionComplete, which is UNREADABLE while the device is
+    // locked; a background relaunch during a lock would then fail to read these
+    // and degrade to the default (real) account — the "logged out on its own after
+    // I locked the phone" bug. CompleteUntilFirstUnlock survives any post-boot lock
+    // and holds only container metadata (no secrets — those live in the keychain).
+    NSDataWritingOptions writeOpts = NSDataWritingAtomic |
+        NSDataWritingFileProtectionCompleteUntilFirstUnlock;
+
     NSError *err = nil;
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:arr
                                                              format:NSPropertyListBinaryFormat_v1_0
                                                             options:0 error:&err];
     if (!data) { IVErr(@"serialize containers failed: %@", err); return NO; }
-    if (![data writeToFile:[IVPaths containersFile] options:NSDataWritingAtomic error:&err]) {
+    if (![data writeToFile:[IVPaths containersFile] options:writeOpts error:&err]) {
         IVErr(@"SAVE FAILED containers -> %@ : %@", [IVPaths containersFile], err);
         return NO;
     }
@@ -106,7 +116,7 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     NSData *ad = [NSPropertyListSerialization dataWithPropertyList:@{ @"activeCID": _activeCID ?: kIVDefaultCID }
                                                            format:NSPropertyListBinaryFormat_v1_0
                                                           options:0 error:&err];
-    if (ad && ![ad writeToFile:[IVPaths activeFile] options:NSDataWritingAtomic error:&err]) {
+    if (ad && ![ad writeToFile:[IVPaths activeFile] options:writeOpts error:&err]) {
         IVErr(@"SAVE FAILED active -> %@ : %@", [IVPaths activeFile], err);
         return NO;
     }

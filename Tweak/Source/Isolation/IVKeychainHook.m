@@ -4,8 +4,19 @@
 #import <Security/Security.h>
 
 // The active container's keychain namespace prefix, e.g. "IV:<cid>:".
-// nil == default container == hooks not installed (real keychain passthrough).
+// nil == not in namespace mode (default container runs in HIDE mode instead).
 static NSString *gPrefix = nil;
+
+// The literal marker that begins EVERY container's namespaced field ("IV:<cid>:"
+// always starts with this). The DEFAULT container installs the hooks in HIDE mode
+// (gHideMode=YES, gPrefix=nil): it reads/writes the real, un-prefixed keychain but
+// EXCLUDES any IV:-marked item from its reads and enumerations. Without this, the
+// default container — which has no prefix to scope by — enumerated the physically
+// shared keychain and surfaced every container's login items (their kSecAttrAccount
+// is not namespaced), so an account the user never logged into on the default
+// container appeared there after a container had been used. HIDE mode closes that.
+static NSString *const kIVMarker = @"IV:";
+static BOOL gHideMode = NO;
 
 // Saved originals (filled by fishhook).
 static OSStatus (*orig_SecItemAdd)(CFDictionaryRef, CFTypeRef *) = NULL;
@@ -22,10 +33,10 @@ static NSString *IVPrefixed(NSString *value) {
 }
 
 static NSString *IVStripped(NSString *value) {
-    if ([value isKindOfClass:[NSString class]] && [value hasPrefix:gPrefix]) {
+    if (gPrefix && [value isKindOfClass:[NSString class]] && [value hasPrefix:gPrefix]) {
         return [value substringFromIndex:gPrefix.length];
     }
-    return value;
+    return value;   // hide mode (gPrefix nil) or unprefixed: return as-is
 }
 
 // The keychain primary-key attribute we namespace for a query's class:
@@ -180,17 +191,135 @@ static void IVLogKeychainOp(NSString *op, NSDictionary *m) {
     IVLog(@"KC %@", sig);
 }
 
+#pragma mark - Session persistence across device lock (P2a)
+
+// Instagram's session/credential items inherit whatever kSecAttrAccessible class
+// Instagram chose (or iOS's default, kSecAttrAccessibleWhenUnlocked, when the app
+// sets none). Every "WhenUnlocked" variant is UNREADABLE while the device is
+// locked, so when iOS relaunches Instagram in the background during a lock (push
+// wake, background refresh) it cannot read the session, concludes the user is
+// logged out, and tears the session down — then on return, already unlocked, the
+// app still demands the password. We upgrade ONLY the lock-fragile classes to the
+// matching AfterFirstUnlock class (readable while locked once the device has been
+// unlocked once since boot), preserving the migratable-vs-ThisDeviceOnly intent
+// and never DOWNGRADING a deliberately stricter policy. Applied on Add and Update
+// in BOTH modes, so the real (default) login persists across lock too.
+static void IVUpgradeAccessibilityInPlace(NSMutableDictionary *m) {
+    id acc = m[(__bridge id)kSecAttrAccessible];
+    if (acc == nil) {
+        // No class set → iOS defaults to (migratable) WhenUnlocked → lock-fragile.
+        m[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
+    } else if ([acc isEqual:(__bridge id)kSecAttrAccessibleWhenUnlocked]) {
+        m[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
+    } else if ([acc isEqual:(__bridge id)kSecAttrAccessibleWhenUnlockedThisDeviceOnly]) {
+        m[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+    }
+    // AfterFirstUnlock*, WhenPasscodeSetThisDeviceOnly, Always*: left untouched —
+    // already lock-survivable, or a deliberate stricter/looser policy we must keep.
+}
+
+#pragma mark - Default-container HIDE mode (P1)
+
+// Default-container READ. The default container has no prefix to scope by, so it
+// reads the real, un-prefixed keychain — but it must NEVER surface a container's
+// IV:-marked item. A field-present exact read can't match one (its field value is
+// "IV:<cid>:<value>", not "<value>"), so pass it straight through. A field-LESS
+// enumeration would otherwise return every container's items too: discover across
+// the class, DROP any IV:-marked item, and hand back only the real items in the
+// caller's requested shape.
+static OSStatus IVHideModeCopyMatching(NSDictionary *q, CFStringRef field, CFTypeRef *result) {
+    id fv = q[(__bridge id)field];
+    if ([fv isKindOfClass:[NSString class]]) {
+        return orig_SecItemCopyMatching((__bridge CFDictionaryRef)q, result);   // exact real read
+    }
+    BOOL wantData  = [q[(__bridge id)kSecReturnData] boolValue];
+    BOOL wantAttrs = [q[(__bridge id)kSecReturnAttributes] boolValue];
+    BOOL wantPRef  = [q[(__bridge id)kSecReturnPersistentRef] boolValue];
+    BOOL wantRef   = [q[(__bridge id)kSecReturnRef] boolValue];
+    id limit = q[(__bridge id)kSecMatchLimit];
+    BOOL wantAll = [limit isEqual:(__bridge id)kSecMatchLimitAll] ||
+                   ([limit isKindOfClass:[NSNumber class]] && [limit integerValue] != 1);
+
+    NSMutableDictionary *dq = [q mutableCopy];
+    dq[(__bridge id)kSecReturnAttributes] = (__bridge id)kCFBooleanTrue;   // need each field
+    dq[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;      // scan every item
+
+    CFTypeRef raw = NULL;
+    OSStatus st = orig_SecItemCopyMatching((__bridge CFDictionaryRef)dq, &raw);
+    if (st != errSecSuccess || !raw) {
+        if (raw) CFRelease(raw);
+        return (st == errSecSuccess) ? errSecItemNotFound : st;
+    }
+    NSMutableArray *kept = [NSMutableArray array];
+    if ([(__bridge id)raw isKindOfClass:[NSArray class]]) {
+        for (id item in (__bridge NSArray *)raw) {
+            if (![item isKindOfClass:[NSDictionary class]]) continue;
+            id s = ((NSDictionary *)item)[(__bridge id)field];
+            if ([s isKindOfClass:[NSString class]] && [s hasPrefix:kIVMarker]) continue;  // hide container item
+            id shaped = IVReshapeItem(item, wantData, wantAttrs, wantPRef, wantRef);
+            if (shaped) [kept addObject:shaped];
+        }
+    }
+    CFRelease(raw);
+    if (kept.count == 0) return errSecItemNotFound;
+    if (result) {
+        id out = wantAll ? (id)kept : (id)kept.firstObject;
+        *result = (__bridge_retained CFTypeRef)out;
+    }
+    return errSecSuccess;
+}
+
+// Default-container class-wide DELETE (field-less). A field-present delete targets
+// a real item (IV: items differ by field value, untouched) and passes through; a
+// class-wide delete would otherwise wipe every container's items too. Enumerate
+// and delete ONLY the real, un-marked items, leaving every container's IV: items
+// intact.
+static OSStatus IVHideModeDeleteAllRealForClass(NSDictionary *q, CFStringRef field) {
+    NSMutableDictionary *dq = [q mutableCopy];
+    dq[(__bridge id)kSecReturnAttributes]    = (__bridge id)kCFBooleanTrue;
+    dq[(__bridge id)kSecReturnPersistentRef] = (__bridge id)kCFBooleanTrue;
+    dq[(__bridge id)kSecMatchLimit]          = (__bridge id)kSecMatchLimitAll;
+    [dq removeObjectForKey:(__bridge id)kSecReturnData];
+    [dq removeObjectForKey:(__bridge id)kSecReturnRef];
+
+    CFTypeRef raw = NULL;
+    OSStatus st = orig_SecItemCopyMatching((__bridge CFDictionaryRef)dq, &raw);
+    if (st != errSecSuccess || !raw) { if (raw) CFRelease(raw); return st; }
+    BOOL any = NO, allOK = YES;
+    if ([(__bridge id)raw isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *item in (__bridge NSArray *)raw) {
+            if (![item isKindOfClass:[NSDictionary class]]) continue;
+            id s = item[(__bridge id)field];
+            if ([s isKindOfClass:[NSString class]] && [s hasPrefix:kIVMarker]) continue;  // keep container item
+            id pref = item[(__bridge id)kSecValuePersistentRef];
+            if (!pref) continue;
+            any = YES;
+            NSDictionary *del = @{ (__bridge id)kSecValuePersistentRef: pref };
+            if (orig_SecItemDelete((__bridge CFDictionaryRef)del) != errSecSuccess) allOK = NO;
+        }
+    }
+    CFRelease(raw);
+    if (!any) return errSecItemNotFound;
+    return allOK ? errSecSuccess : errSecItemNotFound;
+}
+
 #pragma mark - Hooked functions
 
-// WRITE: namespace the item's field (inject a bare prefix when absent so
-// field-less items are still isolated per container), then strip the prefix
-// from any returned attributes.
+// WRITE: upgrade the item's accessibility so the session survives device lock
+// (P2a), then — namespace mode — scope the item to this container (injecting a
+// bare prefix when the field is absent) and strip the prefix from any returned
+// attributes. In hide/default mode the item is written to the real keychain as-is
+// (only the accessibility upgrade applies).
 static OSStatus iv_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
-    IVLogKeychainOp(@"add", attributes ? (__bridge NSDictionary *)attributes : nil);
-    CFDictionaryRef q = IVCopyNamespacedQuery(attributes, YES);
+    NSDictionary *orig = attributes ? (__bridge NSDictionary *)attributes : nil;
+    IVLogKeychainOp(@"add", orig);
+    NSMutableDictionary *m = orig ? [orig mutableCopy] : [NSMutableDictionary new];
+    IVUpgradeAccessibilityInPlace(m);                                     // P2a: survive device lock
+    CFDictionaryRef q = gPrefix ? IVCopyNamespacedQuery((__bridge CFDictionaryRef)m, YES)
+                                : (__bridge_retained CFDictionaryRef)m;   // hide/default: real write
     OSStatus st = orig_SecItemAdd(q, result);
     CFRelease(q);
-    if (st == errSecSuccess && result && *result) {
+    if (gPrefix && st == errSecSuccess && result && *result) {
         id stripped = IVStripResultObject((__bridge id)*result);
         if (stripped && stripped != (__bridge id)*result) {
             CFRelease(*result);
@@ -220,10 +349,16 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
     NSDictionary *q = query ? (__bridge NSDictionary *)query : nil;
     IVLogKeychainOp(@"read", q);
 
-    // Passthrough for everything we don't namespace.
+    // Passthrough for everything we don't namespace / hide, ref-keyed queries, or
+    // when neither mode is active.
     CFStringRef field = IVNamespaceField(q);
-    if (!gPrefix || field == NULL || IVQueryHasExplicitRef(q)) {
+    if (field == NULL || IVQueryHasExplicitRef(q) || (!gPrefix && !gHideMode)) {
         return orig_SecItemCopyMatching(query, result);
+    }
+
+    // Default container: read the real keychain but never surface a container item.
+    if (gHideMode) {
+        return IVHideModeCopyMatching(q, field, result);
     }
 
     id fv = q[(__bridge id)field];
@@ -293,34 +428,54 @@ static OSStatus iv_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result)
     return errSecSuccess;
 }
 
-// UPDATE: namespace both the match query and, if the update payload sets a new
-// field value, the payload too. injectWhenAbsent=YES keeps symmetry with Add so
-// a field-less item added earlier is found by the bare prefix.
+// UPDATE: upgrade the payload's accessibility so the session survives lock (P2a),
+// then — namespace mode — namespace both the match query and, if the payload sets
+// a new field value, the payload too (injectWhenAbsent=YES keeps symmetry with
+// Add). In hide/default mode the (accessibility-upgraded) update is applied to the
+// real keychain as-is.
 static OSStatus iv_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
-    IVLogKeychainOp(@"update", query ? (__bridge NSDictionary *)query : nil);
-    CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
+    NSDictionary *qd = query ? (__bridge NSDictionary *)query : nil;
+    IVLogKeychainOp(@"update", qd);
     NSMutableDictionary *upd = attributesToUpdate
-        ? [(__bridge NSDictionary *)attributesToUpdate mutableCopy] : nil;
+        ? [(__bridge NSDictionary *)attributesToUpdate mutableCopy] : [NSMutableDictionary new];
+    IVUpgradeAccessibilityInPlace(upd);                                   // P2a: survive device lock
+
+    if (!gPrefix) {   // hide/default: match real items, apply the upgraded payload
+        return orig_SecItemUpdate(query, (__bridge CFDictionaryRef)upd);
+    }
+
+    CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
     // The payload's item is the query's item, so namespace whichever field the
     // query's class uses if the payload sets a new value for it.
-    CFStringRef field = IVNamespaceField(query ? (__bridge NSDictionary *)query : nil);
+    CFStringRef field = IVNamespaceField(qd);
     if (field != NULL) {
         id newVal = upd[(__bridge id)field];
         if ([newVal isKindOfClass:[NSString class]]) upd[(__bridge id)field] = IVPrefixed(newVal);
     }
-    CFDictionaryRef a = upd ? (__bridge_retained CFDictionaryRef)upd : attributesToUpdate;
-
-    OSStatus st = orig_SecItemUpdate(q, a);
+    OSStatus st = orig_SecItemUpdate(q, (__bridge CFDictionaryRef)upd);
     CFRelease(q);
-    if (upd) CFRelease(a);
     return st;
 }
 
-// DELETE: namespace the query (inject a bare prefix when absent). This scopes a
-// field-less delete to THIS container's bare-prefix items and never touches
-// other containers' field-keyed items — a deliberately safe trade-off.
+// DELETE: namespace mode scopes a field-less delete to THIS container's
+// bare-prefix items and never touches other containers' field-keyed items. Hide/
+// default mode passes a field-present (real-item) delete through, but for a
+// class-wide (field-less) delete removes ONLY the real, un-marked items so a
+// default-container wipe can never nuke a container's login.
 static OSStatus iv_SecItemDelete(CFDictionaryRef query) {
-    IVLogKeychainOp(@"delete", query ? (__bridge NSDictionary *)query : nil);
+    NSDictionary *qd = query ? (__bridge NSDictionary *)query : nil;
+    IVLogKeychainOp(@"delete", qd);
+
+    if (gHideMode) {
+        CFStringRef field = IVNamespaceField(qd);
+        if (field == NULL || IVQueryHasExplicitRef(qd) ||
+            [qd[(__bridge id)field] isKindOfClass:[NSString class]]) {
+            return orig_SecItemDelete(query);   // targets a real item (or non-password class)
+        }
+        return IVHideModeDeleteAllRealForClass(qd, field);
+    }
+    if (!gPrefix) return orig_SecItemDelete(query);
+
     CFDictionaryRef q = IVCopyNamespacedQuery(query, YES);
     OSStatus st = orig_SecItemDelete(q);
     CFRelease(q);
@@ -342,32 +497,61 @@ static OSStatus IVRawDelete(CFDictionaryRef q) {
 
 #pragma mark - Install
 
-@implementation IVKeychainHook
-
-+ (BOOL)installWithPrefix:(NSString *)prefix {
-    if (prefix.length == 0) {
-        IVLog(@"Keychain: default container — real keychain passthrough (no hooks)");
-        return YES;   // intentional no-op for the default container
-    }
-    if (gPrefix) {
-        IVLog(@"Keychain: hooks already installed (prefix=%@)", gPrefix);
-        return YES;
-    }
-    gPrefix = [prefix copy];
-
+// Rebind the four SecItem* symbols to our hooks. Both modes (namespace + hide)
+// install the SAME hooks; the mode flags (gPrefix / gHideMode) decide behavior.
+static BOOL IVBindKeychainHooks(void) {
     struct rebinding rebindings[] = {
         {"SecItemAdd",          (void *)iv_SecItemAdd,          (void **)&orig_SecItemAdd},
         {"SecItemCopyMatching", (void *)iv_SecItemCopyMatching, (void **)&orig_SecItemCopyMatching},
         {"SecItemUpdate",       (void *)iv_SecItemUpdate,       (void **)&orig_SecItemUpdate},
         {"SecItemDelete",       (void *)iv_SecItemDelete,       (void **)&orig_SecItemDelete},
     };
-    int rc = rebind_symbols(rebindings, sizeof(rebindings) / sizeof(rebindings[0]));
-    if (rc != 0) {
-        IVErr(@"Keychain: rebind_symbols failed rc=%d (prefix=%@) — isolation NOT active", rc, gPrefix);
+    return rebind_symbols(rebindings, sizeof(rebindings) / sizeof(rebindings[0])) == 0;
+}
+
+@implementation IVKeychainHook
+
++ (BOOL)installWithPrefix:(NSString *)prefix {
+    if (prefix.length == 0) {
+        IVLog(@"Keychain: empty prefix — use installDefaultHideMode for the default container");
+        return YES;   // not the namespace path; default container installs hide mode
+    }
+    if (gPrefix) {
+        IVLog(@"Keychain: hooks already installed (prefix=%@)", gPrefix);
+        return YES;
+    }
+    if (gHideMode) {
+        IVErr(@"Keychain: hide mode active — cannot switch to namespace mode in-process");
+        return NO;
+    }
+    gPrefix = [prefix copy];
+    if (!IVBindKeychainHooks()) {
+        IVErr(@"Keychain: rebind_symbols failed (prefix=%@) — isolation NOT active", gPrefix);
         gPrefix = nil;   // no live prefix: never namespace with hooks that didn't bind
         return NO;
     }
     IVLog(@"Keychain: hooks installed, prefix=%@", gPrefix);
+    return YES;
+}
+
+// Install the hooks in HIDE mode for the DEFAULT container: the real keychain is
+// read/written un-prefixed, but every IV:-marked (container) item is excluded from
+// reads, enumerations, and class-wide deletes. This is what stops a container's
+// account from appearing in — or being clobbered by — the default container.
+// Best-effort: a bind failure just leaves the prior passthrough behavior (a
+// possible leak, never a crash), so a failure here must NOT block launch.
++ (BOOL)installDefaultHideMode {
+    if (gPrefix) {
+        IVErr(@"Keychain: namespace mode active — cannot install hide mode");
+        return NO;
+    }
+    if (gHideMode) return YES;
+    if (!IVBindKeychainHooks()) {
+        IVErr(@"Keychain: rebind_symbols failed — default hide mode NOT active (real keychain passthrough)");
+        return NO;
+    }
+    gHideMode = YES;
+    IVLog(@"Keychain: DEFAULT hide mode installed (real keychain minus all IV: items)");
     return YES;
 }
 

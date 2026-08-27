@@ -80,6 +80,16 @@ static void IVBootstrap(void) {
                 IVErr(@"Isolation FAILED for %@ (home=%d key=%d prefs=%d) — reverted to real sandbox to avoid split-brain leak",
                       active.cid, homeOK, keyOK, prefsOK);
             }
+        } else {
+            // Default container: install the keychain in HIDE mode so the real
+            // account's view never includes another container's IV:-marked items.
+            // This is the fix for an account appearing in the default container
+            // after a container had been used: the default used to install NO
+            // keychain hook and therefore enumerated the physically shared keychain,
+            // surfacing every container's login (kSecAttrAccount is not namespaced).
+            // Best-effort — a failure just keeps the prior passthrough, never blocks
+            // launch, and never touches files/prefs (the real account stays intact).
+            [IVKeychainHook installDefaultHideMode];
         }
 
         // 5. Device fingerprint spoof — only when isolation is actually active.

@@ -8,6 +8,7 @@
 #import <sys/sysctl.h>
 #import <objc/runtime.h>
 #import <CommonCrypto/CommonDigest.h>
+#import <dlfcn.h>
 #import <errno.h>
 #import <string.h>
 
@@ -26,6 +27,24 @@ static NSUUID *IVSeededUUID(NSString *cid, NSString *tag) {
     return [[NSUUID alloc] initWithUUIDBytes:h];
 }
 
+// `nchars` uppercase hex characters from SHA256(cid + tag). Deterministic.
+static NSString *IVSeededHex(NSString *cid, NSString *tag, NSUInteger nchars) {
+    unsigned char h[CC_SHA256_DIGEST_LENGTH];
+    IVSeedBytes([NSString stringWithFormat:@"%@|%@", cid, tag], h);
+    NSMutableString *s = [NSMutableString stringWithCapacity:nchars];
+    for (NSUInteger i = 0; i < nchars; i++) {
+        [s appendFormat:@"%1X", h[i % CC_SHA256_DIGEST_LENGTH] >> ((i & 1) ? 0 : 4) & 0xF];
+    }
+    return s;
+}
+
+// A plausible modern-iPhone UDID: 8 hex + '-' + 16 hex (25 chars), e.g.
+// "00008120-0011223344556677". Deterministic per cid.
+static NSString *IVSeededUDID(NSString *cid) {
+    return [NSString stringWithFormat:@"%@-%@",
+            IVSeededHex(cid, @"udid-hi", 8), IVSeededHex(cid, @"udid-lo", 16)];
+}
+
 #pragma mark - State
 
 static NSString *gSpoofedModel = nil;   // e.g. @"iPhone14,2"
@@ -39,10 +58,20 @@ static NSString *gSpoofedBuild = nil;        // build,     e.g. @"23G83"
 static char *gSpoofedProductVersionC = NULL; // kern.osproductversion
 static char *gSpoofedBuildC = NULL;          // kern.osversion
 
+// MobileGestalt spoof (P3) — per-container device identity as libMobileGestalt
+// reports it. Populated only for non-default containers, keyed by the exact
+// property string Instagram's anti-fraud code queries. Everything not in this
+// dictionary passes straight through to the real MGCopyAnswer. ProductType is
+// pinned to the SAME model string as hw.machine so the two never disagree (an
+// unspoofed ProductType alongside a spoofed hw.machine is itself a tamper tell).
+static NSDictionary<NSString *, NSString *> *gGestaltSpoof = nil;
+
 // Saved originals.
 static int (*orig_sysctlbyname)(const char *, void *, size_t *, void *, size_t) = NULL;
 static int (*orig_sysctl)(int *, u_int, void *, size_t *, void *, size_t) = NULL;
 static int (*orig_uname)(struct utsname *) = NULL;
+static CFPropertyListRef (*orig_MGCopyAnswer)(CFStringRef) = NULL;
+static void *(*orig_dlsym)(void *, const char *) = NULL;
 
 @implementation IVDeviceSpoof
 
@@ -117,6 +146,38 @@ static int iv_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void
     return orig_sysctl(name, namelen, oldp, oldlenp, newp, newlen);
 }
 
+#pragma mark - MobileGestalt hook (P3)
+
+// libMobileGestalt's MGCopyAnswer is THE canonical device-identity oracle: it
+// answers UniqueDeviceID, SerialNumber, ProductType, etc. Instagram's anti-fraud
+// layer reads it to fingerprint the handset, so two containers that both report
+// the real values look like one device with many accounts (the captcha trigger).
+// We return per-container deterministic answers for a tight identity whitelist and
+// pass everything else through untouched. Returned values are +1 retained
+// (CFBridgingRetain), honoring the "Copy" ownership contract the caller expects.
+static CFPropertyListRef iv_MGCopyAnswer(CFStringRef property) {
+    if (property && gGestaltSpoof) {
+        NSString *key = (__bridge NSString *)property;
+        NSString *val = gGestaltSpoof[key];
+        if (val) return (CFPropertyListRef)CFBridgingRetain(val);
+    }
+    if (orig_MGCopyAnswer) return orig_MGCopyAnswer(property);
+    return NULL;
+}
+
+// Many apps resolve MGCopyAnswer at runtime via dlsym (the symbol is private, so
+// it is rarely bound statically). fishhook can only rebind statically-bound
+// imports, so we ALSO intercept dlsym and hand back our replacement whenever the
+// exact "MGCopyAnswer" symbol is requested. Every other lookup — including the
+// multi-argument "MGCopyAnswerWithError" (a different ABI we must never alias to
+// our 1-arg function) — passes straight through to the real dlsym.
+static void *iv_dlsym(void *handle, const char *symbol) {
+    if (symbol && strcmp(symbol, "MGCopyAnswer") == 0 && orig_MGCopyAnswer) {
+        return (void *)iv_MGCopyAnswer;
+    }
+    return orig_dlsym ? orig_dlsym(handle, symbol) : NULL;
+}
+
 #pragma mark - ObjC swizzle helpers
 
 static void IVSwizzleReturningUUID(Class cls, SEL sel, NSString *(^uuidStr)(void)) {
@@ -178,6 +239,19 @@ static void IVInstallIOSVersionSpoof(void) {
     gVendorUUID = [IVSeededUUID(container.cid, @"idfv").UUIDString copy];
     gAdvUUID = [IVSeededUUID(container.cid, @"idfa").UUIDString copy];
 
+    // MobileGestalt identity whitelist (P3). ProductType MUST equal the spoofed
+    // hw.machine model, or the two disagree and betray the spoof. SerialNumber is
+    // sourced from IVDeviceIdentity — the SAME value the device-info sheet shows
+    // the user — so a container's serial is identical wherever it surfaces (one
+    // container == one phone). ProductVersion/BuildVersion are added below only
+    // when the OS version is actually spoofed, keeping MobileGestalt consistent
+    // with the kern.os* sysctl answers.
+    NSMutableDictionary<NSString *, NSString *> *gestalt = [NSMutableDictionary dictionaryWithDictionary:@{
+        @"UniqueDeviceID": IVSeededUDID(container.cid),
+        @"SerialNumber":   [IVDeviceIdentity serialForCID:container.cid],
+        @"ProductType":    gSpoofedModel ?: @"",
+    }];
+
     // iOS version — only when the container pins one AND its build resolves, so
     // kern.osproductversion / kern.osversion / UIDevice / NSProcessInfo agree.
     if (container.iosVersion.length) {
@@ -194,6 +268,15 @@ static void IVInstallIOSVersionSpoof(void) {
         }
     }
 
+    // Mirror the resolved OS version into MobileGestalt so ProductVersion/
+    // BuildVersion never contradict the sysctl kern.os* spoof. Left untouched
+    // (real passthrough) when the container pins no version.
+    if (gSpoofedIOSVersion.length) {
+        gestalt[@"ProductVersion"] = gSpoofedIOSVersion;
+        if (gSpoofedBuild.length) gestalt[@"BuildVersion"] = gSpoofedBuild;
+    }
+    gGestaltSpoof = [gestalt copy];
+
     // IDFV — every app on a device shares one, so per-container is plausible.
     IVSwizzleReturningUUID([UIDevice class], @selector(identifierForVendor), ^NSString *{ return gVendorUUID; });
 
@@ -206,15 +289,34 @@ static void IVInstallIOSVersionSpoof(void) {
     // iOS-version ObjC surfaces (no-op when unset above).
     IVInstallIOSVersionSpoof();
 
-    // hw.machine (+ kern.os* when set) via sysctlbyname + sysctl (raw MIB) + uname.
+    // Resolve the REAL MGCopyAnswer BEFORE rebinding dlsym (so this lookup uses
+    // the genuine dlsym, not our interceptor). libMobileGestalt is loaded by
+    // UIKit in every UI process, so RTLD_DEFAULT finds it; fall back to an
+    // explicit dlopen if the shared-cache search misses.
+    orig_MGCopyAnswer = (CFPropertyListRef (*)(CFStringRef))dlsym(RTLD_DEFAULT, "MGCopyAnswer");
+    if (!orig_MGCopyAnswer) {
+        void *mg = dlopen("/usr/lib/libMobileGestalt.dylib", RTLD_LAZY);
+        if (mg) orig_MGCopyAnswer = (CFPropertyListRef (*)(CFStringRef))dlsym(mg, "MGCopyAnswer");
+    }
+
+    // hw.machine (+ kern.os* when set) via sysctlbyname + sysctl (raw MIB) + uname,
+    // plus MobileGestalt: rebind the bound MGCopyAnswer import AND intercept dlsym
+    // to cover the (common) runtime-resolved path. Only wired when the real
+    // MGCopyAnswer resolved, so a miss degrades to no MobileGestalt spoof rather
+    // than a NULL-forward crash.
     struct rebinding r[] = {
         {"sysctlbyname", (void *)iv_sysctlbyname, (void **)&orig_sysctlbyname},
         {"sysctl",       (void *)iv_sysctl,       (void **)&orig_sysctl},
         {"uname",        (void *)iv_uname,        (void **)&orig_uname},
+        {"MGCopyAnswer", (void *)iv_MGCopyAnswer, (void **)&orig_MGCopyAnswer},
+        {"dlsym",        (void *)iv_dlsym,        (void **)&orig_dlsym},
     };
-    int rc = rebind_symbols(r, sizeof(r) / sizeof(r[0]));
-    IVLog(@"DeviceSpoof: model=%@ ios=%@ (build %@) idfv=%@ rc=%d",
-          gSpoofedModel, gSpoofedIOSVersion ?: @"real", gSpoofedBuild ?: @"-", gVendorUUID, rc);
+    // Drop the MobileGestalt pair if we could not resolve the original.
+    unsigned count = orig_MGCopyAnswer ? (sizeof(r) / sizeof(r[0])) : 3;
+    int rc = rebind_symbols(r, count);
+    IVLog(@"DeviceSpoof: model=%@ ios=%@ (build %@) idfv=%@ udid=%@ mg=%d rc=%d",
+          gSpoofedModel, gSpoofedIOSVersion ?: @"real", gSpoofedBuild ?: @"-",
+          gVendorUUID, gGestaltSpoof[@"UniqueDeviceID"], (orig_MGCopyAnswer != NULL), rc);
 }
 
 @end

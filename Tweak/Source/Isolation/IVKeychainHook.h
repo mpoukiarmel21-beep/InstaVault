@@ -12,16 +12,24 @@ NS_ASSUME_NONNULL_BEGIN
 /// Modeled on iCTK/BlazeUniversal's "ADMIN:<bundle>_<cid>" scheme.
 @interface IVKeychainHook : NSObject
 
-/// Install the hooks with a per-container prefix (e.g. "IV:<cid>:").
-/// Pass nil/empty (default container) to skip installation entirely, so the
-/// default container reads/writes the real, un-prefixed keychain.
+/// Install the hooks with a per-container prefix (e.g. "IV:<cid>:") — namespace
+/// mode, for a non-default container. Pass nil/empty and this returns YES without
+/// installing (the default container uses installDefaultHideMode instead).
 ///
-/// Returns YES if the hooks are in effect (or intentionally skipped for the
-/// default container), NO if the fishhook rebind failed. On NO the caller must
-/// treat isolation as failed and revert the HOME redirect (see
-/// IVHomeRedirect revertToRealHome) so the launch stays on the real sandbox
-/// rather than isolating files while leaking credentials to the shared keychain.
+/// Returns YES if the hooks are in effect (or intentionally skipped), NO if the
+/// fishhook rebind failed. On NO the caller must treat isolation as failed and
+/// revert the HOME redirect (see IVHomeRedirect revertToRealHome) so the launch
+/// stays on the real sandbox rather than isolating files while leaking credentials
+/// to the shared keychain.
 + (BOOL)installWithPrefix:(nullable NSString *)prefix;
+
+/// Install the hooks in HIDE mode for the DEFAULT container. The default container
+/// reads/writes the real, un-prefixed keychain, but every IV:-marked (container)
+/// item is excluded from its reads, enumerations, and class-wide deletes — so an
+/// account created inside a container never appears in, and is never clobbered by,
+/// the default container. Best-effort: on a rebind failure returns NO and the
+/// caller should simply continue (prior passthrough behavior), NOT block launch.
++ (BOOL)installDefaultHideMode;
 
 /// Delete every namespaced password item (generic- AND internet-password) whose
 /// service/server begins with `prefix`. Pass "IV:<cid>:" to wipe one container's

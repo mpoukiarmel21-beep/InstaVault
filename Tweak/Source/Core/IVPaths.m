@@ -14,11 +14,16 @@ static NSString *gRealHome = nil;
 // cannot resolve the active container, and silently degrades to the default
 // (real) sandbox — the app comes back on the wrong identity and the container's
 // session looks logged out. Downgrading OUR control files (never Instagram's own
-// data) to CompleteUntilFirstUnlock makes them readable during any post-boot
-// locked relaunch, so the right container is resolved every time. It is never
-// stricter than needed: these files hold only container metadata, no secrets
+// data) to CompleteUntilFirstUserAuthentication makes them readable during any
+// post-boot locked relaunch, so the right container is resolved every time. It is
+// never stricter than needed: these files hold only container metadata, no secrets
 // (credentials live in the keychain, upgraded separately in IVKeychainHook).
-static NSString *const kIVFileProtection = NSFileProtectionCompleteUntilFirstUnlock;
+//
+// A #define (not a `static NSString *const`) because NSFileProtectionType values
+// are extern symbols resolved at load time, so a file-scope static initialized
+// from one is not a compile-time constant — the macro defers the reference to
+// each (in-function) use site, where it is legal.
+#define kIVFileProtection NSFileProtectionCompleteUntilFirstUserAuthentication
 
 // Best-effort: stamp `path` with kIVFileProtection. Logs on failure but never
 // aborts — a relaunch on the wrong protection class is a soft degrade, not a

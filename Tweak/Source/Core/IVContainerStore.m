@@ -93,15 +93,16 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     NSMutableArray *arr = [NSMutableArray arrayWithCapacity:_list.count];
     for (IVContainer *c in _list) [arr addObject:c.toDict];
 
-    // Write the control plists lock-readable (CompleteUntilFirstUnlock), matching
-    // the control dir's protection (see IVPaths). Instagram's sandbox defaults new
-    // files to NSFileProtectionComplete, which is UNREADABLE while the device is
+    // Write the control plists lock-readable (CompleteUntilFirstUserAuthentication),
+    // matching the control dir's protection (see IVPaths). Instagram's sandbox defaults
+    // new files to NSFileProtectionComplete, which is UNREADABLE while the device is
     // locked; a background relaunch during a lock would then fail to read these
     // and degrade to the default (real) account — the "logged out on its own after
-    // I locked the phone" bug. CompleteUntilFirstUnlock survives any post-boot lock
-    // and holds only container metadata (no secrets — those live in the keychain).
+    // I locked the phone" bug. CompleteUntilFirstUserAuthentication survives any
+    // post-boot lock and holds only container metadata (no secrets — those live in
+    // the keychain).
     NSDataWritingOptions writeOpts = NSDataWritingAtomic |
-        NSDataWritingFileProtectionCompleteUntilFirstUnlock;
+        NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication;
 
     NSError *err = nil;
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:arr

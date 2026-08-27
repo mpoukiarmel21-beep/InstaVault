@@ -165,9 +165,19 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 #pragma mark - Mutations
 
 - (IVContainer *)createWithName:(NSString *)name {
+    return [self createWithName:name cid:nil];
+}
+
+- (IVContainer *)createWithName:(NSString *)name cid:(NSString *)cid {
     IVContainer *c = [IVContainer containerWithName:name];
     [_lock lock];
     @try {
+        // Honor a caller-supplied cid (the create screen mints it up-front to seed
+        // a unique device fingerprint) — but never let it collide with an existing
+        // container or the reserved default; fall back to the generated cid then.
+        if (cid.length && ![cid isEqualToString:kIVDefaultCID] && ![self _containerForCIDLocked:cid]) {
+            c.cid = cid;
+        }
         // Build the on-disk skeleton FIRST: a container we can't back with a
         // directory tree must never be added or persisted (would look valid in
         // the list but fail to isolate anything at launch).

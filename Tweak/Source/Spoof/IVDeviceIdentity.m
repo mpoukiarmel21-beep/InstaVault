@@ -174,6 +174,30 @@ static NSString *IVCharsFromSeed(const unsigned char *h, NSUInteger count, NSUIn
     return IVCharsFromSeed(h, 10, 0);   // modern Apple serials are 10 chars
 }
 
+#pragma mark - Seeded per-container device pick (unique fingerprint at creation)
+
+// A stable 32-bit index derived from SHA256(cid|tag): the first 4 bytes big-endian.
+// Used to pick deterministically from a list so a given cid always resolves to the
+// same element, but different cids spread across the list.
+static uint32_t IVSeededIndex(NSString *cid, NSString *tag) {
+    unsigned char h[CC_SHA256_DIGEST_LENGTH];
+    IVIdentitySeed(cid, tag, h);
+    return ((uint32_t)h[0] << 24) | ((uint32_t)h[1] << 16) |
+           ((uint32_t)h[2] << 8)  |  (uint32_t)h[3];
+}
+
++ (IVDeviceModel *)seededModelForCID:(NSString *)cid {
+    NSArray<IVDeviceModel *> *models = [self modelsForRealChip];   // never empty
+    if (models.count == 0) return [self defaultModel];
+    return models[IVSeededIndex(cid, @"model-pick") % models.count];
+}
+
++ (NSString *)seededIOSVersionForCID:(NSString *)cid {
+    NSArray<NSString *> *vers = [self iosVersions];
+    if (vers.count == 0) return nil;
+    return vers[IVSeededIndex(cid, @"ios-pick") % vers.count];
+}
+
 // Region -> the 1-2 char suffix Apple uses in a model number (…F/A = France).
 static NSString *IVRegionSuffix(NSString *region) {
     static NSDictionary<NSString *, NSString *> *map = nil;

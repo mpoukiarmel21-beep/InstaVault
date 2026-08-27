@@ -38,6 +38,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// Library/Preferences, tmp) under a container root. Returns NO + logs on failure.
 + (BOOL)ensureSkeletonAtRoot:(NSString *)root;
 
+/// Recursively (re-)stamp every file and directory under `root` with
+/// NSFileProtectionCompleteUntilFirstUserAuthentication. Instagram's sandbox
+/// defaults NEW files to NSFileProtectionComplete (unreadable while the device is
+/// locked), so a container's runtime-written SESSION data (cookies, tokens,
+/// WebKit/HTTPStorages, prefs) inherits Complete and becomes unreadable after a
+/// lock — the app relaunches unable to read the session and the account looks
+/// "logged out on its own hours later". Downgrading the whole active-container
+/// tree to CompleteUntilFirstUserAuthentication keeps the session readable through
+/// every post-boot lock, so a login persists indefinitely. Best-effort per item
+/// (logs, never aborts). MUST only be called for a non-default container root —
+/// never Instagram's real sandbox.
++ (void)reapplyProtectionRecursivelyAtRoot:(NSString *)root;
+
 @end
 
 NS_ASSUME_NONNULL_END

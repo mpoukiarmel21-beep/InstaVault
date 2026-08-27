@@ -40,6 +40,13 @@ extern NSString *const kIVActiveChanged;       // active container changed
 /// Returns the container, or nil (and logs) if the skeleton could not be built
 /// or the list could not be persisted — in which case nothing is added.
 - (nullable IVContainer *)createWithName:(NSString *)name;
+
+/// As -createWithName: but adopts a caller-supplied cid when it is non-empty, not
+/// the reserved default, and not already in use (otherwise a fresh cid is
+/// generated). The create screen mints the cid up-front so the container's whole
+/// device fingerprint (model, iOS, serial, UDID, IDFV) derives from ONE seed and
+/// the pre-creation preview matches the assigned identity exactly.
+- (nullable IVContainer *)createWithName:(NSString *)name cid:(nullable NSString *)cid;
 - (BOOL)renameContainer:(IVContainer *)c to:(NSString *)newName;   // NO for default/blank
 - (BOOL)removeContainer:(IVContainer *)c;                          // NO for default/active
 

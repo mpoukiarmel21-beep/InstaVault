@@ -13,6 +13,7 @@
 @property (nonatomic, strong) UITextField *nameField;
 @property (nonatomic, copy) NSString *chosenModel;        // identifier, e.g. "iPhone17,1"
 @property (nonatomic, copy) NSString *chosenIOS;          // marketing, e.g. "26.6.1"
+@property (nonatomic, copy, nullable) NSString *seedCID;  // create only: cid minted up-front to seed a unique fingerprint
 @end
 
 @implementation IVCreateVC
@@ -20,12 +21,24 @@
 - (instancetype)initWithContainer:(IVContainer *)container {
     if ((self = [super init])) {
         _editing = container;
-        // Default a brand-new container to the newest model on the REAL chip family
-        // and the newest iOS version — the "realistic, newest identity" default.
-        _chosenModel = container.deviceModel.length ? container.deviceModel
-                                                    : [IVDeviceIdentity defaultModel].identifier;
-        _chosenIOS = container.iosVersion.length ? container.iosVersion
-                                                 : [IVDeviceIdentity iosVersions].firstObject;
+        if (container) {
+            // Edit: keep the container's saved identity; if a legacy container has
+            // none, fall back to a UNIQUE per-cid identity (never the shared newest).
+            _chosenModel = container.deviceModel.length ? container.deviceModel
+                            : [IVDeviceIdentity seededModelForCID:container.cid].identifier;
+            _chosenIOS = container.iosVersion.length ? container.iosVersion
+                            : [IVDeviceIdentity seededIOSVersionForCID:container.cid];
+        } else {
+            // Create: mint the cid NOW and derive a UNIQUE fingerprint from it, so
+            // every new container defaults to a DISTINCT device + iOS instead of all
+            // sharing the newest one (the multi-account fingerprint collision that
+            // trips Instagram). The user can still override both in the pickers; the
+            // same cid is handed to the store at save so the whole identity (model,
+            // iOS, serial, UDID, IDFV) derives from one seed.
+            _seedCID = [[NSUUID UUID] UUIDString];
+            _chosenModel = [IVDeviceIdentity seededModelForCID:_seedCID].identifier;
+            _chosenIOS = [IVDeviceIdentity seededIOSVersionForCID:_seedCID];
+        }
     }
     return self;
 }
@@ -80,7 +93,9 @@
     if (target) {
         if (![store renameContainer:target to:name]) { [self warnSaveFailed]; return; }
     } else {
-        target = [store createWithName:name];
+        // Pass the up-front cid so the container adopts the exact identity previewed
+        // above (model + iOS derived from this same seed).
+        target = [store createWithName:name cid:self.seedCID];
         if (!target) { [self warnSaveFailed]; return; }
     }
     if (![store setDeviceModel:self.chosenModel

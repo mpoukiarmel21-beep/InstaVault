@@ -45,6 +45,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// real chip family.
 + (IVDeviceModel *)defaultModel;
 
+/// A DETERMINISTIC, per-container model picked from the real chip family by
+/// hashing the cid — so two containers created on the same physical phone default
+/// to DIFFERENT device identifiers instead of all collapsing onto +defaultModel
+/// (the multi-account fingerprint collision that trips Instagram's captcha). Stays
+/// inside the real chip family (an A13 device can never claim an A19). Stable
+/// across launches for a given cid.
++ (IVDeviceModel *)seededModelForCID:(NSString *)cid;
+
+/// A DETERMINISTIC, per-container iOS marketing version picked from +iosVersions
+/// by hashing the cid — the OS-version counterpart to +seededModelForCID:, so new
+/// containers also spread across iOS versions instead of all reporting the newest.
++ (NSString *)seededIOSVersionForCID:(NSString *)cid;
+
 + (nullable IVDeviceModel *)modelForIdentifier:(NSString *)identifier;
 
 /// Marketing name for an identifier; falls back to the identifier itself.

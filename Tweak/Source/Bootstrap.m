@@ -33,6 +33,70 @@ static void IVScheduleFloatingButton(void) {
                    dispatch_get_main_queue(), present);
 }
 
+// The cid this process actually booted (and applied isolation) for. Set ONCE in
+// the constructor to the RESOLVED active cid — even on a degraded boot, so the
+// guard below compares against what we ran as, not what we wished we ran as.
+static NSString *gBootstrappedCID = nil;
+
+// Backstop for the app-switcher WARM-RESUME leak. The constructor runs exactly
+// once per COLD launch, so the HOME/keychain/CFPreferences redirects are applied
+// only then. If the user switches the active container from the panel, the app
+// tries to exit for a clean relaunch — but if it was only SUSPENDED (its card was
+// never force-quit from the switcher) and iOS resumes it warm, the constructor
+// does NOT re-run: the process keeps the OLD container's redirects while the
+// on-disk activeCID now points to the newly chosen one, so the account surfaces on
+// the wrong/default identity (exactly "revenu depuis le panel → le compte est
+// apparu sur le compte par défaut"). Redirects can't be re-applied mid-process
+// (they are one-shot at load), so on every foreground we compare the live
+// activeCID to what we booted with and exit(0) on a mismatch; iOS then cold-
+// launches us and the constructor applies the correct isolation. Coalesced to the
+// default cid on both sides so a degraded boot (running as real/default) does NOT
+// exit on every resume — only a genuine container switch trips it.
+static void IVInstallStaleContainerGuard(void) {
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification *n) {
+        NSString *booted  = gBootstrappedCID.length ? gBootstrappedCID : kIVDefaultCID;
+        NSString *current = [IVContainerStore shared].activeCID;
+        current = current.length ? current : kIVDefaultCID;
+        if (![booted isEqualToString:current]) {
+            IVLog(@"stale container on resume (booted=%@ now=%@) — exiting for a clean cold relaunch",
+                  booted, current);
+            exit(0);
+        }
+    }];
+}
+
+// Task C — keep the isolated container's SESSION data lock-readable "for life".
+// New files Instagram writes at runtime (cookies, tokens, WebKit/HTTPStorages,
+// prefs) inherit NSFileProtectionComplete, which is unreadable once the device
+// locks — so hours later a background relaunch can't read the session and the
+// account looks logged out. Each time the app backgrounds (the moment fresh
+// session files have just been written), re-stamp the whole active-container tree
+// down to CompleteUntilFirstUserAuthentication so it survives any post-boot lock.
+// Guarded by a background task so iOS grants us the run time before suspending,
+// and done off the main thread. Only ever the isolated container root is passed
+// in — never Instagram's real sandbox.
+static void IVInstallBackgroundReprotect(NSString *containerRoot) {
+    if (!containerRoot.length) return;
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification *n) {
+        UIApplication *app = [UIApplication sharedApplication];
+        __block UIBackgroundTaskIdentifier task = UIBackgroundTaskInvalid;
+        task = [app beginBackgroundTaskWithName:@"IVReprotect" expirationHandler:^{
+            if (task != UIBackgroundTaskInvalid) { [app endBackgroundTask:task]; task = UIBackgroundTaskInvalid; }
+        }];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            [IVPaths reapplyProtectionRecursivelyAtRoot:containerRoot];
+            if (task != UIBackgroundTaskInvalid) { [app endBackgroundTask:task]; task = UIBackgroundTaskInvalid; }
+        });
+    }];
+}
+
+
 __attribute__((constructor))
 static void IVBootstrap(void) {
     @autoreleasepool {
@@ -51,6 +115,9 @@ static void IVBootstrap(void) {
         // 3. Resolve the active container (falls back to default).
         IVContainer *active = store.activeContainer;
         BOOL isDefault = (!active || active.isDefault);
+        // Remember what we booted as (resolved cid, default-coalesced) for the
+        // warm-resume stale guard installed below.
+        gBootstrappedCID = [(active.cid.length ? active.cid : kIVDefaultCID) copy];
         IVLog(@"TWEAK_LOAD begin — active=%@ (%@)", active.name, active.cid);
 
         // 4. Isolation redirects — applied ONCE, only for non-default containers,
@@ -101,6 +168,15 @@ static void IVBootstrap(void) {
             // Locale/timezone spoof — same gate: only meaningful once files/keychain/
             // prefs are isolated. No-op when the container sets no language/region.
             [IVLocaleSpoof installForContainer:active];
+
+            // Task C — permanent login persistence. Downgrade the whole container
+            // tree to CompleteUntilFirstUserAuthentication NOW (catch any session
+            // files written under Complete on a previous launch), then re-stamp on
+            // every background so freshly-written session data stays lock-readable.
+            // Isolated container root ONLY — never the real/default sandbox.
+            NSString *root = [IVPaths containerRootForCID:active.cid];
+            [IVPaths reapplyProtectionRecursivelyAtRoot:root];
+            IVInstallBackgroundReprotect(root);
         }
 
         // 6. Location spoof — safe to install always; reads the active container
@@ -109,6 +185,10 @@ static void IVBootstrap(void) {
 
         // 7. Floating control button, once the UI is ready.
         IVScheduleFloatingButton();
+
+        // 8. Warm-resume backstop: force a clean cold relaunch if the active
+        //    container changed while we were only suspended (app-switcher resume).
+        IVInstallStaleContainerGuard();
 
         IVLog(@"TWEAK_LOAD complete — isolation=%@", isolated ? @"ON" : @"OFF (default/real sandbox)");
     }

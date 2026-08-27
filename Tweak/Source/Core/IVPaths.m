@@ -119,4 +119,39 @@ static void IVApplyProtection(NSString *path) {
     return YES;
 }
 
++ (void)reapplyProtectionRecursivelyAtRoot:(NSString *)root {
+    if (!root.length) return;
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:root]) return;
+
+    // Re-stamp the root itself, then walk the whole subtree. NSDirectoryEnumerator
+    // yields relative sub-paths lazily (no giant in-memory array) and we skip its
+    // per-item attribute prefetch — we only need the path, and we setAttributes
+    // regardless of the current class. Best-effort: each failure is logged, never
+    // aborts, so one unreadable item can't stop the rest of the session data from
+    // being downgraded to lock-readable.
+    IVApplyProtection(root);
+
+    NSDirectoryEnumerator *en =
+        [fm enumeratorAtURL:[NSURL fileURLWithPath:root isDirectory:YES]
+ includingPropertiesForKeys:nil
+                    options:0
+               errorHandler:^BOOL(NSURL *url, NSError *err) {
+                   IVErr(@"protection walk error at %@: %@", url.path, err);
+                   return YES;   // keep going past an unreadable node
+               }];
+    NSUInteger stamped = 0;
+    for (NSURL *url in en) {
+        NSError *err = nil;
+        if ([fm setAttributes:@{ NSFileProtectionKey: kIVFileProtection }
+                 ofItemAtPath:url.path error:&err]) {
+            stamped++;
+        } else {
+            IVErr(@"protection re-stamp failed at %@: %@", url.path, err);
+        }
+    }
+    IVLog(@"reapplied protection to %lu item(s) under %@",
+          (unsigned long)stamped, root.lastPathComponent);
+}
+
 @end

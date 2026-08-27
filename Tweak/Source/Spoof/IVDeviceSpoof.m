@@ -77,9 +77,11 @@ static void *(*orig_dlsym)(void *, const char *) = NULL;
 
 + (NSString *)effectiveModelForContainer:(IVContainer *)container {
     if (container.deviceModel.length) return container.deviceModel;   // explicit override
-    // No explicit model: default to the newest model on the REAL chip family, so
-    // display + spoof stay consistent with the anti-fingerprint constraint.
-    return [IVDeviceIdentity defaultModel].identifier;
+    // No explicit model: a UNIQUE per-cid model on the REAL chip family, so two
+    // no-model containers (e.g. legacy ones created before per-container seeding)
+    // never collide on the same identifier. Stays within the anti-fingerprint
+    // constraint (never leaves the real chip family).
+    return [IVDeviceIdentity seededModelForCID:container.cid].identifier;
 }
 
 #pragma mark - Version parsing

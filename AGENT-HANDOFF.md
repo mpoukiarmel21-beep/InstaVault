@@ -12,38 +12,37 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-27 : **lot « 3 bugs d'isolation remontés par
-l'utilisatrice, réglés un par un + consolidation anti-fuite de tout le code »**.
-- **P1** compte fantôme dans le conteneur par défaut après fermeture auto/réouverture
-  → le défaut installe le hook keychain en **HIDE mode** (exclut tout item `IV:` de
-  ses lectures/énumérations/deletes de classe).
-- **P2** déconnexion seule après verrouillage du téléphone → (a) accessibilité
-  keychain remontée `WhenUnlocked*`→`AfterFirstUnlock*` sur Add/Update ; (b) plists
-  de contrôle + skeleton en `CompleteUntilFirstUserAuthentication` (au lieu du
-  `Complete` d'IG, illisible verrouillé).
-- **P3** captcha « plusieurs comptes détectés » → spoof **MobileGestalt**
-  (`MGCopyAnswer` + `dlsym`) par conteneur : UniqueDeviceID + SerialNumber +
-  ProductType (épinglé au modèle spoofé) + ProductVersion/BuildVersion quand iOS
-  spoofé. Série unifiée avec `IVDeviceIdentity` (= série affichée dans la feuille
-  d'infos). **Livré : build-94**
-  (`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-94/InstaVault.ipa`,
-  325 008 362 o). Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`) — seul le dylib change.
+Claude Code (Opus) — 2026-08-27 (2e lot du jour) : **empreinte device unique par
+conteneur à la création + persistance login « à vie » + backstop fuite au retour
+depuis le panneau multitâche**. 3 intentions dérivées de la demande utilisatrice :
+- **(A)** chaque conteneur reçoit une **identité device DISTINCTE dès la création**
+  (modèle + version iOS dérivés d'une graine cid unique) au lieu que tous prennent
+  le modèle/iOS le plus récent (collision d'empreinte).
+- **(B)** le compte réapparaissait sur le **défaut** quand IG s'était fermé seul
+  mais que sa carte n'avait pas été **balayée** du multitâche, puis repris → garde
+  de conteneur périmé au premier plan (`exit(0)` → relance à froid propre).
+- **(C)** login **permanent** : re-stamp récursif de la protection fichier du
+  conteneur (session illisible verrouillée = fausse déconnexion « des heures après »).
+**Livré : build-95** (à compléter après CI). Base IG = **`INSTAGRAM.ipa`** (release
+`v1.0-ipa`). Correctifs précédents (build-94 : P1/P2/P3) toujours en place.
+
 
 ## Prochaine étape
-**Build livré : build-94** →
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-94/InstaVault.ipa`.
-Installer via Sideloadly, puis vérifier les **3 bugs** un par un :
-1. **P1 — fuite conteneur→défaut** : créer/connecter un compte dans un conteneur,
-   activer (l'app se ferme), rouvrir plusieurs fois, revenir au conteneur **par
-   défaut** → le compte du conteneur ne doit **jamais** y apparaître.
-2. **P2 — déconnexion après verrouillage** : se connecter dans un conteneur,
-   **verrouiller** le téléphone plusieurs minutes, revenir → la session doit
-   **tenir** (pas de re-saisie du mot de passe). Idem après un relancement
-   background pendant le verrouillage : le bon conteneur doit se charger, pas le défaut.
-3. **P3 — fingerprint multi-comptes** : créer plusieurs comptes dans des conteneurs
-   distincts → **moins/plus de captcha** de corrélation « plusieurs comptes ».
-   Vérifier via les réglages IG que modèle/série/iOS diffèrent d'un conteneur à l'autre.
-4. **Non-régression** login/identité, langue, localisation, modèle (builds 90→92).
+**Build livré : build-95** (URL à compléter après CI). Installer via Sideloadly,
+puis vérifier les **3 nouveautés** de ce lot :
+1. **A — empreinte device unique à la création** : créer **plusieurs** conteneurs
+   d'affilée sans rien changer dans les feuilles → chacun doit proposer par défaut
+   un **modèle ET une version iOS DIFFÉRENTS** (plus tous « iPhone récent / iOS le
+   plus récent »). Vérifier via les réglages IG que modèle/série/iOS diffèrent.
+2. **B — retour depuis le multitâche sans balayer la carte** : se connecter dans un
+   conteneur, laisser IG se fermer seul (sans balayer sa carte), changer de conteneur
+   actif depuis le panneau, revenir sur IG depuis le multitâche → le compte ne doit
+   **jamais** réapparaître sur le **défaut** ; l'app doit relancer à froid le bon conteneur.
+3. **C — login « à vie »** : se connecter dans un conteneur, **verrouiller** le
+   téléphone plusieurs **heures**, revenir → la session doit **tenir** (aucune
+   re-saisie du mot de passe), même après un relancement background pendant le verrou.
+4. **Non-régression** des 3 bugs de build-94 (P1/P2/P3) et login/identité/langue/localisation.
+
 
 
 ## Blocages / risques
@@ -59,7 +58,78 @@ Installer via Sideloadly, puis vérifier les **3 bugs** un par un :
 
 ## Journal
 
-### 2026-08-27 — Claude Code (Opus) — 3 bugs d'isolation réglés un par un + consolidation anti-fuite (build-94)
+### 2026-08-27 — Claude Code (Opus) — empreinte unique à la création + login « à vie » + backstop retour multitâche (build-95)
+
+**Demande utilisatrice (verbatim)** : « Ajoute la fonction d'empreinte, digitale
+unique pour chaque conteneur à la création, un petit bug quand l'Instagram, c'est
+fermé automatiquement j'ai, j'ai pas effacé son historique sur le panel les
+applications ouvertes et du coup quand j'étais revenu dessus, c'est là où le compte
+est apparu sur le compte par défaut donc si j'efface pas l'historique peut-être que
+ça risque de se reproduire […] le rendre plus forte encore et tu dois t'assurer que
+les comptes disparaissent plus dans les heures qui suivent, même si je bloque mon
+téléphone, ça doit y rester pour toute la vie si je veux ». → 3 intentions, réglées
+une par une, sans casser les correctifs P1/P2/P3 de build-94.
+
+**A — Empreinte device UNIQUE dès la création.** Avant : tout nouveau conteneur
+retombait sur le modèle le plus récent + l'iOS le plus récent → collision
+d'empreinte entre comptes (signal de corrélation multi-comptes). Après : identité
+device **déterministe par cid**.
+- `IVDeviceIdentity` (.h/.m) : ajout de `+ seededModelForCID:` et
+  `+ seededIOSVersionForCID:`, appuyés sur `IVSeededIndex(cid, tag)` = 4 premiers
+  octets big-endian de `SHA256(cid|tag)` (via l'`IVIdentitySeed` existant). Modèle
+  tiré de `modelsForRealChip` (donc **jamais** hors de la puce réelle — anti-tell),
+  iOS tiré de `iosVersions`. Ordre de portée vérifié : `IVIdentitySeed` →
+  `IVSeededIndex` → méthodes seedées.
+- `IVCreateVC.m` : à la **création**, le cid est frappé d'avance
+  (`_seedCID = NSUUID`), et `_chosenModel`/`_chosenIOS` en dérivent → l'aperçu montre
+  déjà l'identité définitive ; `save` transmet ce cid via `createWithName:cid:` pour
+  que **toute** la fingerprint (modèle, iOS, série, UDID, IDFV) dérive d'**une seule**
+  graine. Édition d'un conteneur legacy sans modèle : fallback vers l'identité unique
+  du cid (plus jamais le modèle partagé le plus récent).
+- `IVContainerStore` (.h/.m) : `createWithName:cid:` honore un cid fourni
+  (skeleton-first, persist-or-rollback) ; `createWithName:` délègue avec nil.
+- `IVDeviceSpoof.m` : fallback de `effectiveModelForContainer:` =
+  `seededModelForCID:` (au lieu de `defaultModel`).
+- Conteneurs **existants** volontairement NON migrés (changer l'appareil d'un compte
+  déjà en service est lui-même un tell) — « à la création » = nouveaux conteneurs.
+
+**B — Fuite au retour depuis le multitâche (carte non balayée).** Le constructeur
+n'applique les redirections (HOME/keychain/CFPreferences) qu'**une fois par lancement
+à froid** ; il ne re-tourne pas sur une reprise chaude. Si IG était seulement
+**suspendu** (carte jamais balayée) et que l'utilisatrice changeait de conteneur
+actif depuis le panneau, iOS le reprenait à chaud avec les **anciennes** redirections
+alors que l'`activeCID` sur disque pointait déjà ailleurs → compte affiché sur la
+mauvaise identité / le défaut.
+- B1 (fait avant) : `IVCloseAppForSwitch` fait son `exit(0)` sur une file **globale**
+  (le `dispatch_after` sur la file **principale** ne se déclenche pas après
+  `[UIApplication suspend]`, run loop gelée).
+- B2 (ce lot, `Bootstrap.m`) : mémorisation de `gBootstrappedCID` (cid réellement
+  booté, coalescé au défaut, fixé **même** en boot dégradé) + garde
+  `IVInstallStaleContainerGuard()` sur `UIApplicationWillEnterForeground` : si
+  l'`activeCID` courant ≠ celui booté → `exit(0)` → iOS relance **à froid** et le
+  constructeur applique la **bonne** isolation. Coalescé au défaut des deux côtés →
+  un boot dégradé (tournant sur le réel/défaut) ne boucle pas en `exit` à chaque reprise.
+
+**C — Login PERMANENT (survit au verrouillage « des heures »).** Le keychain était
+déjà `AfterFirstUnlock` (P2a) et les plists de contrôle en
+`CompleteUntilFirstUserAuthentication` (P2b) ; pièce manquante = les fichiers de
+**session écrits au runtime** (cookies, tokens, WebKit/HTTPStorages, prefs) héritent
+du `NSFileProtectionComplete` d'IG → **illisibles verrouillé** → relance background
+pendant le verrou = session illisible = « déconnecté tout seul des heures après ».
+- `IVPaths` (.h/.m) : `+ reapplyProtectionRecursivelyAtRoot:` re-stampe **tout**
+  l'arbre du conteneur en `CompleteUntilFirstUserAuthentication` (énumérateur paresseux,
+  best-effort par item, ne bloque jamais).
+- `Bootstrap.m` : appelé une fois **post-isolation** sur la racine du conteneur actif
+  (rattrape les fichiers écrits sous `Complete` à un lancement précédent) **et**
+  `IVInstallBackgroundReprotect()` le rejoue à chaque `UIApplicationDidEnterBackground`
+  (moment où les fichiers de session frais viennent d'être écrits), sous
+  `beginBackgroundTaskWithName:` (temps d'exécution accordé avant suspension) et hors
+  file principale. Racine du conteneur **isolé UNIQUEMENT** — jamais le sandbox réel/défaut.
+
+**Diff** : 10 fichiers, +222 / −12 sur `feature/v2-build`. Aucun compilateur macOS
+local → build **CI uniquement**. Correctifs P1/P2/P3 de build-94 intacts.
+
+
 
 **Contexte** : l'utilisatrice a testé et remonté 3 soucis — (1) après fermeture
 auto d'un conteneur et réouverture, un compte apparaît dans le conteneur **par

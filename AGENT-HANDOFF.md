@@ -12,34 +12,38 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-26 : **lot « audit spoof + fermeture auto à
-l'activation »**. (A) Re-vérification bout-en-bout des trois spoofs (langue,
-localisation, modèle) — verdict + 2 durcissements ciblés appliqués. (B) Nouvelle
-fonctionnalité : activer un conteneur **ferme l'app automatiquement** (le choix
-n'est appliqué qu'au lancement, il faut donc redémarrer) ; le conteneur par
-défaut reste le repli. **Livré : build-92**
-(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-92/InstaVault.ipa`,
-325 003 185 o). Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`) — seul le dylib change.
+Claude Code (Opus) — 2026-08-27 : **lot « 3 bugs d'isolation remontés par
+l'utilisatrice, réglés un par un + consolidation anti-fuite de tout le code »**.
+- **P1** compte fantôme dans le conteneur par défaut après fermeture auto/réouverture
+  → le défaut installe le hook keychain en **HIDE mode** (exclut tout item `IV:` de
+  ses lectures/énumérations/deletes de classe).
+- **P2** déconnexion seule après verrouillage du téléphone → (a) accessibilité
+  keychain remontée `WhenUnlocked*`→`AfterFirstUnlock*` sur Add/Update ; (b) plists
+  de contrôle + skeleton en `CompleteUntilFirstUserAuthentication` (au lieu du
+  `Complete` d'IG, illisible verrouillé).
+- **P3** captcha « plusieurs comptes détectés » → spoof **MobileGestalt**
+  (`MGCopyAnswer` + `dlsym`) par conteneur : UniqueDeviceID + SerialNumber +
+  ProductType (épinglé au modèle spoofé) + ProductVersion/BuildVersion quand iOS
+  spoofé. Série unifiée avec `IVDeviceIdentity` (= série affichée dans la feuille
+  d'infos). **Livré : build-94**
+  (`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-94/InstaVault.ipa`,
+  325 008 362 o). Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`) — seul le dylib change.
 
 ## Prochaine étape
-**Build livré : build-92** →
-`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-92/InstaVault.ipa`.
-Installer via Sideloadly, puis vérifier :
-1. **Fermeture auto** — créer un conteneur, régler modèle/iOS/langue/GPS, taper
-   « Activer ce conteneur » : brève confirmation « Conteneur activé » puis l'app
-   se ferme seule. **Rouvrir** l'app → elle démarre sur le conteneur activé.
-2. **Langue** — dans un conteneur avec une langue posée : l'UI Instagram doit
-   s'afficher dans cette langue au relancement.
-3. **Localisation** — poser Paris sur le conteneur, autoriser IG à accéder à la
-   localisation (réglage iOS), puis taguer un lieu dans un post / ouvrir « lieux
-   à proximité » : la ville proposée doit être Paris. **Caveat** : le spoof GPS
-   agit sur le tag de lieu et la liste des lieux proches, PAS sur la géoloc par
-   adresse IP (pays deviné côté serveur) — pour ça il faudrait un proxy/VPN dans
-   la région.
-4. **Modèle** — via 📱 puis dans les réglages IG : le modèle rapporté doit être
-   celui du menu (limité à la puce réelle de l'appareil, par anti-détection).
-5. **Non-régression login/identité** (build-90) — bascule sans « continuer avec
-   le profil connecté » ; toujours prioritaire au 1er run réel.
+**Build livré : build-94** →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-94/InstaVault.ipa`.
+Installer via Sideloadly, puis vérifier les **3 bugs** un par un :
+1. **P1 — fuite conteneur→défaut** : créer/connecter un compte dans un conteneur,
+   activer (l'app se ferme), rouvrir plusieurs fois, revenir au conteneur **par
+   défaut** → le compte du conteneur ne doit **jamais** y apparaître.
+2. **P2 — déconnexion après verrouillage** : se connecter dans un conteneur,
+   **verrouiller** le téléphone plusieurs minutes, revenir → la session doit
+   **tenir** (pas de re-saisie du mot de passe). Idem après un relancement
+   background pendant le verrouillage : le bon conteneur doit se charger, pas le défaut.
+3. **P3 — fingerprint multi-comptes** : créer plusieurs comptes dans des conteneurs
+   distincts → **moins/plus de captcha** de corrélation « plusieurs comptes ».
+   Vérifier via les réglages IG que modèle/série/iOS diffèrent d'un conteneur à l'autre.
+4. **Non-régression** login/identité, langue, localisation, modèle (builds 90→92).
 
 
 ## Blocages / risques
@@ -54,6 +58,76 @@ Installer via Sideloadly, puis vérifier :
 - Sous-agents de revue indisponibles (403 auth) ; revue humaine/CI reste le filet.
 
 ## Journal
+
+### 2026-08-27 — Claude Code (Opus) — 3 bugs d'isolation réglés un par un + consolidation anti-fuite (build-94)
+
+**Contexte** : l'utilisatrice a testé et remonté 3 soucis — (1) après fermeture
+auto d'un conteneur et réouverture, un compte apparaît dans le conteneur **par
+défaut** alors qu'elle n'y a jamais rien créé/connecté ; (2) les comptes se
+**déconnectent seuls** quelques minutes après un verrouillage du téléphone
+(re-saisie du mot de passe exigée) ; (3) le système « chaque conteneur = un
+nouveau téléphone » ne prend pas : créer plusieurs comptes déclenche des
+**captcha** de corrélation. Mandat : « revérifier tout le code et consolider le
+projet entier pour qu'il n'y ait plus de fuite, une bonne fois pour toutes »,
+réglés **un par un**. (Sous-agents de revue indisponibles — 403 quota ; revue en
+direct sur les sources.)
+
+**P1 — fuite conteneur → conteneur par défaut**
+- Cause : le conteneur par défaut n'installait **aucun** hook keychain et
+  énumérait donc le keychain **physiquement partagé** ; `kSecAttrAccount` n'étant
+  pas namespacé, chaque login créé dans un conteneur (marqué `IV:<cid>:`)
+  ressortait dans la vue du défaut.
+- Fix : `IVKeychainHook installDefaultHideMode` (nouveau) — le défaut lit/écrit le
+  vrai keychain non préfixé mais **exclut tout item `IV:`-marqué** de ses lectures,
+  énumérations et deletes de classe (`gHideMode`). Câblé dans `Bootstrap.m` sur la
+  branche conteneur par défaut. Best-effort : un échec de rebind garde le
+  passthrough, ne bloque jamais le lancement.
+
+**P2 — déconnexion seule après verrouillage**
+- Cause (a) keychain : les items login/session posés en
+  `kSecAttrAccessibleWhenUnlocked(ThisDeviceOnly)` deviennent **illisibles** dès
+  que l'appareil se verrouille → IG croit la session perdue.
+- Fix (a) : `IVUpgradeAccessibilityInPlace` remonte `WhenUnlocked*` →
+  `AfterFirstUnlock*` sur **Add et Update**, dans les deux modes (namespace +
+  hide). Les classes plus strictes (`WhenPasscodeSet*`, `Always*`, déjà
+  `AfterFirstUnlock*`) sont laissées intactes.
+- Cause (b) fichiers : les plists de contrôle héritaient du `NSFileProtectionComplete`
+  d'Instagram (**illisible verrouillé**) ; un relaunch background pendant un
+  verrouillage échouait à lire `containers.plist`/`active.plist` et retombait sur
+  le défaut (réel) — d'où l'impression de déconnexion.
+- Fix (b) : dir de contrôle + `containers.plist` + `active.plist` + skeleton écrits
+  en `NSFileProtectionCompleteUntilFirstUserAuthentication` (fichiers) et
+  `NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication` (écritures). Ne
+  contiennent que des métadonnées de conteneur, aucun secret.
+
+**P3 — fingerprint / captcha multi-comptes**
+- Cause : deux conteneurs remontaient la **même** identité device (MobileGestalt
+  non spoofé) → IG voit un seul téléphone à plusieurs comptes → captcha.
+- Fix : spoof **MobileGestalt** `MGCopyAnswer` (fishhook) **+ interception `dlsym`**
+  (chemin résolu au runtime, courant pour ce symbole privé). Whitelist par
+  conteneur, déterministe par cid : `UniqueDeviceID`, `SerialNumber`, `ProductType`
+  **épinglé** au `hw.machine` spoofé (un ProductType réel à côté d'un hw.machine
+  spoofé serait lui-même un tell) ; `ProductVersion`/`BuildVersion` ajoutés
+  **uniquement** quand la version iOS est spoofée, pour ne pas contredire
+  `kern.osproductversion`/`kern.osversion`. Tout le reste passe au vrai
+  `MGCopyAnswer`. `MGCopyAnswerWithError` (ABI différente) jamais aliasé.
+- Consolidation : `SerialNumber` désormais tiré d'`IVDeviceIdentity serialForCID:`
+  — **la même valeur** que la feuille d'infos device montrée à l'utilisatrice
+  (`IVPanelVC`), donc un conteneur = une série cohérente partout. Doublon mort
+  `IVSeededSerial` supprimé.
+
+**Correctif de build (2 commits)** : 1er build (run 33053673726) **échoué** —
+`NSFileProtectionCompleteUntilFirstUnlock` **n'existe pas** (vraie constante
+Foundation : `...UntilFirstUserAuthentication`, l'équivalent fichier de
+`kSecAttrAccessibleAfterFirstUnlock`), et un `static NSString *const` de portée
+fichier initialisé depuis un extern n'est pas une constante de compilation. Corrigé
+(nom + passage de `kIVFileProtection` en `#define`, idem `NSDataWritingOptions`).
+2e build (run 33054200379) **succès** → **build-94**.
+
+**Livré** : build-94 →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-94/InstaVault.ipa`
+(325 008 362 o). Commits `a1cf5ce` (fix isolation) + `629c72c` (fix constante) sur
+`feature/v2-build`. **À valider sur appareil** (voir « Prochaine étape »).
 
 ### 2026-08-26 — Claude Code (Opus) — audit spoof (langue/loc/modèle) + fermeture auto à l'activation (build-92)
 

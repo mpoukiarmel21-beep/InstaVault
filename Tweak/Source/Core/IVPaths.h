@@ -51,6 +51,18 @@ NS_ASSUME_NONNULL_BEGIN
 /// never Instagram's real sandbox.
 + (void)reapplyProtectionRecursivelyAtRoot:(NSString *)root;
 
+/// Wipe the REAL (default/principal) account's on-disk session surfaces under
+/// realHome — the HTTP cookie jar (Library/Cookies), NSURLSession storage
+/// (Library/HTTPStorages) and web-view data (Library/WebKit) — where Instagram's
+/// logged-in session persists for the un-isolated account. A global reset calls
+/// this so "réinitialiser" clears the principal account's cookies too, not just
+/// the containers' (whose surfaces live under their own container root and are
+/// removed with that tree). Best-effort per path (logs, never aborts); returns NO
+/// if any surface existed but could not be removed. ONLY touches realHome/Library
+/// session dirs — never the control plane (realHome/Documents/InstaVault) nor any
+/// container root. Instagram recreates these dirs empty on next launch.
++ (BOOL)wipeRealSessionFiles;
+
 @end
 
 NS_ASSUME_NONNULL_END

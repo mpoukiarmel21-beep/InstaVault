@@ -44,6 +44,18 @@ NS_ASSUME_NONNULL_BEGIN
 /// means the wipe was only partial and the caller must report failure.
 + (NSInteger)countItemsWithPrefix:(NSString *)prefix;
 
+/// Delete every REAL (un-namespaced) password item — the DEFAULT/real account's
+/// own login/session material, i.e. the exact inverse of purgeItemsWithPrefix:.
+/// An item is "real" when NEITHER its kSecAttrService NOR its kSecAttrServer
+/// begins with the "IV:" container marker (a container item always carries an
+/// "IV:<cid>:" prefix on one of those fields). Used by a global reset so
+/// "réinitialiser" truly logs out the principal account too, not just the
+/// containers. Enumerates both password classes via the RAW keychain functions
+/// (bypassing our own namespacing) and deletes by persistent ref. Container
+/// (IV:-marked) items are never touched — purge those with purgeItemsWithPrefix:.
+/// Returns the number of items deleted.
++ (NSInteger)purgeRealPasswordItems;
+
 @end
 
 NS_ASSUME_NONNULL_END

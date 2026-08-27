@@ -337,6 +337,23 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
             IVErr(@"resetAll: %ld namespaced keychain item(s) survived the purge", (long)residue);
             ok = NO;
         }
+        // R2 — a global reset must log out the PRINCIPAL (default/real) account too,
+        // not just the containers: "réinitialiser ... tous les cookies de
+        // l'application dans le téléphone". The real account's session lives OUTSIDE
+        // every container — in the real sandbox's Library session dirs, the real
+        // un-namespaced keychain, and the live in-process cookie jar — so the per-
+        // container wipes above never reach it. Clear all three here.
+        //   (1) On-disk real session surfaces (Cookies / HTTPStorages / WebKit).
+        if (![IVPaths wipeRealSessionFiles]) ok = NO;
+        //   (2) Real (un-"IV:"-namespaced) keychain login/session items.
+        [IVKeychainHook purgeRealPasswordItems];
+        //   (3) The live NSHTTPCookieStorage jar — Instagram keeps the running
+        //       session's cookies in memory; without this the app would re-persist
+        //       them over the freshly wiped Library/Cookies on the next flush.
+        NSHTTPCookieStorage *jar = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+        for (NSHTTPCookie *ck in [jar.cookies copy]) {
+            [jar deleteCookie:ck];
+        }
     } @finally { [_lock unlock]; }
     if (persisted) {
         [self postOnMain:kIVContainersChanged];

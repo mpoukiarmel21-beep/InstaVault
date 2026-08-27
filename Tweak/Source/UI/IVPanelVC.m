@@ -435,13 +435,31 @@ static void IVCloseAppForSwitch(void) {
 
 - (void)confirmReset {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Tout réinitialiser ?"
-        message:@"Supprime TOUS les conteneurs et leurs données, sauf le principal. Irréversible."
+        message:@"Déconnecte AUSSI le compte principal : efface tous les cookies et sessions "
+                @"Instagram du téléphone et supprime tous les conteneurs. L'app se fermera. "
+                @"Irréversible."
                                                        preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Annuler" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Réinitialiser" style:UIAlertActionStyleDestructive
                                         handler:^(UIAlertAction *x) {
         if ([[IVContainerStore shared] resetAll]) {
-            [self reload];
+            // The wipe cleared the on-disk + keychain + in-memory session, but the
+            // running Instagram process still holds live session state (NSURLSession,
+            // WebKit) that it would re-persist over the freshly cleared files on the
+            // next flush. Cold-close so the next open relaunches truly logged out.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UIAlertController *done = [UIAlertController
+                    alertControllerWithTitle:@"Réinitialisé"
+                                     message:@"Compte déconnecté et données effacées. "
+                                             @"L'app va se fermer — rouvre-la."
+                              preferredStyle:UIAlertControllerStyleAlert];
+                [done addAction:[UIAlertAction actionWithTitle:@"Fermer"
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *y) {
+                    IVCloseAppForSwitch();
+                }]];
+                [self presentViewController:done animated:YES completion:nil];
+            });
         } else {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self warn:@"Réinitialisation incomplète" msg:@"L'écriture disque a échoué. Réessaie."];

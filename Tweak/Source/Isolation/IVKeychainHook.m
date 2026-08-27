@@ -626,4 +626,47 @@ static BOOL IVBindKeychainHooks(void) {
     return n;
 }
 
+// Delete every REAL (un-namespaced) password item — the default/real account's
+// own login/session material. The exact inverse of purgeItemsWithPrefix:: it
+// deletes an item when NEITHER its service NOR its server begins with the "IV:"
+// marker (a container item always carries an "IV:<cid>:" prefix on one of those
+// fields; an item with no service/server at all is likewise a real item, since we
+// always inject a bare prefix on container writes). Used by a global reset so the
+// principal account is logged out too — "réinitialiser tous les cookies de
+// l'application dans le téléphone". Enumerates via the RAW functions (so our own
+// namespacing never re-scopes the sweep) and deletes by persistent ref, an exact
+// class-agnostic delete that can only hit the one item we matched. Container
+// (IV:-marked) items are left intact. Returns the count deleted.
++ (NSInteger)purgeRealPasswordItems {
+    NSInteger deleted = 0;
+    NSArray *classes = @[ (__bridge id)kSecClassGenericPassword,
+                          (__bridge id)kSecClassInternetPassword ];
+    for (id cls in classes) {
+        NSDictionary *q = @{ (__bridge id)kSecClass:               cls,
+                             (__bridge id)kSecMatchLimit:          (__bridge id)kSecMatchLimitAll,
+                             (__bridge id)kSecReturnAttributes:    (__bridge id)kCFBooleanTrue,
+                             (__bridge id)kSecReturnPersistentRef: (__bridge id)kCFBooleanTrue };
+        CFTypeRef raw = NULL;
+        OSStatus st = IVRawCopyMatching((__bridge CFDictionaryRef)q, &raw);
+        if (st != errSecSuccess || !raw) { if (raw) CFRelease(raw); continue; }
+        if ([(__bridge id)raw isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in (__bridge NSArray *)raw) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                id svc = item[(__bridge id)kSecAttrService];
+                id srv = item[(__bridge id)kSecAttrServer];
+                BOOL isContainer = ([svc isKindOfClass:[NSString class]] && [svc hasPrefix:kIVMarker]) ||
+                                   ([srv isKindOfClass:[NSString class]] && [srv hasPrefix:kIVMarker]);
+                if (isContainer) continue;   // keep container items; only real ones die here
+                id pref = item[(__bridge id)kSecValuePersistentRef];
+                if (!pref) continue;
+                NSDictionary *del = @{ (__bridge id)kSecValuePersistentRef: pref };
+                if (IVRawDelete((__bridge CFDictionaryRef)del) == errSecSuccess) deleted++;
+            }
+        }
+        CFRelease(raw);
+    }
+    IVLog(@"Keychain: purged %ld REAL (un-namespaced) password item(s)", (long)deleted);
+    return deleted;
+}
+
 @end

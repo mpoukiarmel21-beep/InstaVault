@@ -154,4 +154,31 @@ static void IVApplyProtection(NSString *path) {
           (unsigned long)stamped, root.lastPathComponent);
 }
 
++ (BOOL)wipeRealSessionFiles {
+    NSString *realHome = [self realHome];
+    if (!realHome.length) return YES;
+    NSString *lib = [realHome stringByAppendingPathComponent:@"Library"];
+
+    // The default/real account's login persists in these Library sub-trees. We
+    // remove the whole dirs (iOS recreates them empty on demand); the control
+    // plane lives under Documents/InstaVault, disjoint from Library, so it is
+    // never touched. Caches is deliberately left alone — the auth material lives
+    // in cookies / HTTPStorages / WebKit and the keychain, and nuking Caches would
+    // only slow the next launch for no logout benefit.
+    NSArray<NSString *> *sessionDirs = @[ @"Cookies", @"HTTPStorages", @"WebKit" ];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    BOOL ok = YES;
+    for (NSString *sub in sessionDirs) {
+        NSString *path = [lib stringByAppendingPathComponent:sub];
+        if (![fm fileExistsAtPath:path]) continue;
+        NSError *err = nil;
+        if (![fm removeItemAtPath:path error:&err]) {
+            IVErr(@"wipeRealSessionFiles: failed to remove %@: %@", path, err);
+            ok = NO;
+        }
+    }
+    IVLog(@"wipeRealSessionFiles: real session surfaces %@", ok ? @"cleared" : @"PARTIAL (see errors)");
+    return ok;
+}
+
 @end

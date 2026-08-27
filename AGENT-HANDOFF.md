@@ -23,13 +23,16 @@ depuis le panneau multitâche**. 3 intentions dérivées de la demande utilisatr
   de conteneur périmé au premier plan (`exit(0)` → relance à froid propre).
 - **(C)** login **permanent** : re-stamp récursif de la protection fichier du
   conteneur (session illisible verrouillée = fausse déconnexion « des heures après »).
-**Livré : build-95** (à compléter après CI). Base IG = **`INSTAGRAM.ipa`** (release
+**Livré : build-95**
+(`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-95/InstaVault.ipa`,
+325 013 133 o). Base IG = **`INSTAGRAM.ipa`** (release
 `v1.0-ipa`). Correctifs précédents (build-94 : P1/P2/P3) toujours en place.
 
 
 ## Prochaine étape
-**Build livré : build-95** (URL à compléter après CI). Installer via Sideloadly,
-puis vérifier les **3 nouveautés** de ce lot :
+**Build livré : build-95** →
+`https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/build-95/InstaVault.ipa`.
+Installer via Sideloadly, puis vérifier les **3 nouveautés** de ce lot :
 1. **A — empreinte device unique à la création** : créer **plusieurs** conteneurs
    d'affilée sans rien changer dans les feuilles → chacun doit proposer par défaut
    un **modèle ET une version iOS DIFFÉRENTS** (plus tous « iPhone récent / iOS le

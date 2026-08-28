@@ -14,7 +14,8 @@ struct ChipDetector: Sendable {
         let result = sysctlbyname("hw.machine", &buffer, &size, nil, 0)
         guard result == 0 else { return nil }
 
-        let model = String(cString: buffer)
+        let raw = String(decoding: buffer, as: UTF8.self)
+        let model = raw.trimmingCharacters(in: .nullCharacterSet)
         // Simulator returns "arm64" or "x86_64" — not a real hardware model.
         guard model.hasPrefix("iPhone") else { return nil }
         return model

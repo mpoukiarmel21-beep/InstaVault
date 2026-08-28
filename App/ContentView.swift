@@ -28,7 +28,7 @@ struct ContentView: View {
 
                 Spacer()
 
-                Button(action: {}) label: {
+                Button(action: {}) {
                     Text("Importer une image ou vidéo")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)

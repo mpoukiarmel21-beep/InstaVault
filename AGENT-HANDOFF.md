@@ -12,30 +12,11 @@ revue faite en direct à la place). 2 correctifs appliqués. Build local impossi
 (Windows, pas de Theos) → la CI est le seul vrai build.
 
 ## En cours
-Claude Code (Opus) — 2026-08-27 (3e lot du jour) : **la réinitialisation
-déconnecte AUSSI le compte principal + confirmation que la suppression d'un
-conteneur nettoie tout sans impacter les autres (R1/R2/R3)**. 3 intentions
-dérivées de la demande utilisatrice :
-- **(R1)** après réinstallation de l'IPA (sans supprimer l'app d'abord), on
-  retombe sur le conteneur **par défaut** avec le même compte connecté →
-  comportement iOS normal (la réinstall conserve le data container) ; corrigé
-  par une vraie réinitialisation (R2), un nettoyage réellement propre exige de
-  supprimer l'app avant de réinstaller.
-- **(R2)** « Réinitialiser » ne supprimait pas toujours le compte : `resetAll`
-  ne touchait QUE les conteneurs, jamais la session du compte **principal/réel**
-  (hors conteneur). Ajout : effacement des surfaces disque réelles
-  (`realHome/Library/{Cookies,HTTPStorages,WebKit}`), purge du keychain réel
-  (items non préfixés `IV:`), vidage du **cookie jar vivant** `NSHTTPCookieStorage`,
-  puis **fermeture à froid** de l'app pour que la session en cours ne réécrive
-  pas par-dessus le nettoyage.
-- **(R3)** suppression d'un conteneur : **déjà correcte** — `deleteContainerDataLocked`
-  supprime l'arbre racine du conteneur (qui contient ses Cookies/HTTPStorages/
-  WebKit/prefs sous le HOME redirigé) + purge son keychain `IV:<cid>:`, sans
-  toucher aux autres conteneurs (préfixe/racine distincts). Documenté, aucun
-  changement de code.
-**Livré : build-96** (CI run 33062904189, `feature/v2-build`) — voir Journal.
-Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`). Correctifs précédents
-(build-94 P1/P2/P3, build-95 A/B/C) toujours en place.
+Claude Code (Sonnet) — 2026-08-28 : **story s02-chip-detection** (app Whamrando).
+ChipDetector (sysctl hw.machine → ChipFamily A13-A18), DeviceIdentity, tests unitaires,
+`swift test` ajouté à la CI. Commits `b24c3ad`, `836dafe`, `4bb938c` sur
+`feature/s02-chip-detection`. En cours : revue de code (code-reviewer) + CI
+(run pour 4bb938c).
 
 
 ## Prochaine étape
@@ -88,6 +69,23 @@ système liés dynamiquement, la taille grossira avec les features.
 
 **Prochaine étape** : story `s02-chip-detection` (détection puce A13-A18 via sysctl, avant tout
 hook/spoof).
+
+### 2026-08-28 — Claude Code (Sonnet) — s02 chip detection implémentée
+
+**Story s02-chip-detection** : `ChipDetector` (sysctl `hw.machine` → `ChipFamily`),
+`DeviceIdentity`, tests unitaires, `swift test` ajouté à la CI.
+
+- `Sources/Models/DeviceIdentity.swift` — enum `ChipFamily` (A13-A18) + struct
+  `DeviceIdentity` (chip, marketingName, hardwareModel)
+- `Sources/Services/ChipDetector.swift` — `hardwareModel()` lit `sysctlbyname("hw.machine")`
+  (retourne nil sur simulateur arm64/x86_64), `chipFamily(from:)` mappe prefixe
+  `iPhone12,`→A13 … `iPhone17,`→A18
+- `Tests/UnitTests/ChipDetectorTests.swift` — mapping A13→A18 + cas inconnus (Swift Testing)
+- `Package.swift` — testTarget pointé sur `Tests/UnitTests` + `swift-tools-version` 6.2
+- `.github/workflows/build.yml` — étape `swift test` avant le build IPA
+
+**Commits** : `b24c3ad` (feat s02), `836dafe` (ci swift test), `4bb938c` (fix tools-version 6.2)
+sur `feature/s02-chip-detection`.
 
 ### 2026-08-28 — Claude Code (Opus) — Whamrando s01-app-scaffold CI verte ✅
 

@@ -71,20 +71,32 @@ Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`). Correctifs précédents
 
 ## Journal
 
-### 2026-08-28 — Claude Code (Opus) — Whamrando scaffold s01-app-scaffold pushé sur GitHub
-**Action** : terminé le scaffold SwiftUI de l'app iOS native Whamrando (iOS 26, Swift 6,
-SPM, zero deps). Commité sur `feature/s01-app-scaffold` et poussé sur GitHub — la CI `build.yml`
-devrait se déclencher pour valider le `xcodebuild archive`.
+### 2026-08-28 — Claude Code (Opus) — Whamrando s01-app-scaffold CI verte ✅
 
-**Scope** : App/WhamrandoApp.swift, App/ContentView.swift, App/Info.plist (permissions),
-App/Assets.xcassets (19 icônes + AppIcon), App/LaunchScreen.storyboard, App/Whamrando.xcodeproj/
-(project.pbxproj minimal valide pour CI), Package.swift, Sources/ {Models,Views,ViewModels,Services,
-Data,Resources} (.gitkeep), .github/workflows/build.yml, .gitignore, AGENT-HANDOFF.md mis à jour.
+**Action** : scaffold SwiftUI de A à Z pour l'app native iOS Whamrando (iOS 26, Swift 6,
+SPM, zero deps). Pushé sur `feature/s01-app-scaffold` → **CI verte** ✅
+(run 33186109661, 35s).
 
-**Prochaine étape** : valider que la CI passe verte. Si oui, passer à `s02-chip-detection`
-(détection puce A13-A18 via sysctl).
+**Fichiers livrés** :
+- `App/project.yml` — config xcodegen (génère `.xcodeproj` en CI, plus de pbxproj fragile)
+- `App/.gitignore` — ignore `*.xcodeproj` (généré)
+- `App/WhamrandoApp.swift` — entry point SwiftUI, dark theme
+- `App/ContentView.swift` — logo gradient + bouton import
+- `App/Info.plist` — permissions caméra/bibliothèque
+- `App/Assets.xcassets/` — 19 tailles d'icône AppIcon
+- `App/LaunchScreen.storyboard` — écran de lancement
+- `Package.swift` — SPM v6.0, iOS 26, zero deps
+- `Sources/{Models,Views,ViewModels,Services,Data,Resources}/.gitkeep`
+- `.github/workflows/build.yml` — xcodegen + xcodebuild archive + IPA directe
 
----
+**Corrections CI** (5 itérations) :
+1. pbxproj manuel → xcodegen (format incorrect pour Xcode 26)
+2. `generic/platform=iPhone` → `generic/platform=iOS`
+3. `Button(action: {}) label: { }` → `Button(action: {}) { }` (Swift 6)
+4. `exportOptions method=developer` → extraction `.app` + zip → `.ipa` (Xcode 26 exige une
+   team pour `debugging`; contourné en construisant l'IPA manuellement)
+
+**Prochaine étape** : passer à `s02-chip-detection` (détection puce A13-A18 via sysctl).
 
 **Demande utilisatrice (verbatim)** : « Là je viens de réinstaller le fichier
 mais je suis directement tombé sur le conteneur par défaut qui a déjà le même

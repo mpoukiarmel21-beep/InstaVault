@@ -71,6 +71,24 @@ Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`). Correctifs précédents
 
 ## Journal
 
+### 2026-08-28 — Claude Code (Sonnet) — fix IPA : .xcodeproj embarqué dans le .app + relance CI
+
+**Diagnostic** (après livraison de s01) : l'utilisatrice a installé l'IPA whamrando-c054e44 et
+remonté deux points — (1) le bouton « Importer une image ou vidéo » ne fait rien, (2) l'app ne
+pèse que 188 Ko. **Le bouton est normalement vide** : l'import photo (PhotosPicker + permission
+galerie) est une feature de `s06-exif-writer`, pas encore implémentée ; les permissions sont déjà
+dans `Info.plist`. **188 Ko = deux causes** : le `.xcodeproj` généré par xcodegen était embarqué
+dans le `.app` comme ressource (`Payload/Whamrando.app/Whamrando.xcodeproj/` = 17 fichiers
+inutiles) et le binaire est un scaffold vide (118 Ko) — SwiftUI/PhotosUI sont des frameworks
+système liés dynamiquement, la taille grossira avec les features.
+
+**Correctif** : `App/project.yml` — exclusion `"*.xcodeproj"` ajoutée aux sources du target
+(commit `d47762e` sur `feature/s01-app-scaffold`). **CI verte** ✅ (run 33200330013, 1m). IPA
+`whamrando-d47762e` : 9 fichiers, `.xcodeproj` retiré (~166 Ko).
+
+**Prochaine étape** : story `s02-chip-detection` (détection puce A13-A18 via sysctl, avant tout
+hook/spoof).
+
 ### 2026-08-28 — Claude Code (Opus) — Whamrando s01-app-scaffold CI verte ✅
 
 **Action** : scaffold SwiftUI de A à Z pour l'app native iOS Whamrando (iOS 26, Swift 6,

@@ -9,6 +9,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "Whamrando", dependencies: []),
-        .testTarget(name: "WhamrandoTests", dependencies: ["Whamrando"]),
+        .testTarget(name: "WhamrandoTests", dependencies: ["Whamrando"], path: "Tests/UnitTests"),
     ]
 )

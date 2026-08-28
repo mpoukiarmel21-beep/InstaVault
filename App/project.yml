@@ -23,6 +23,7 @@ targets:
         excludes:
           - Info.plist
           - project.yml
+          - "*.xcodeproj"
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.whamrando.app
       PRODUCT_DISPLAY_NAME: Whamrando

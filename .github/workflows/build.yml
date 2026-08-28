@@ -20,7 +20,7 @@ jobs:
           -project App/Whamrando.xcodeproj \
           -scheme Whamrando \
           -configuration Release \
-          -destination "generic/platform=iPhone" \
+          -destination "generic/platform=iOS" \
           -archivePath $GITHUB_WORKSPACE/build/Whamrando.xcarchive \
           archive CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
     - name: Export IPA

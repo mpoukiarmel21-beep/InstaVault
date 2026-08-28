@@ -26,7 +26,7 @@ jobs:
     - name: Export IPA
       run: |
         mkdir -p $GITHUB_WORKSPACE/output
-        printf "%s" "<plist><dict><key>method</key><string>developer</string><key>compileBitcode</key><false/></dict></plist>" > /tmp/expopt.plist
+        printf "%s" "<plist><dict><key>method</key><string>debugging</string><key>compileBitcode</key><false/></dict></plist>" > /tmp/expopt.plist
         xcodebuild -exportArchive -archivePath $GITHUB_WORKSPACE/build/Whamrando.xcarchive -exportPath $GITHUB_WORKSPACE/output -exportOptionsPlist /tmp/expopt.plist
     - name: Upload
       uses: actions/upload-artifact@v4

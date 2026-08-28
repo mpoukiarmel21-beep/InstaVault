@@ -19,12 +19,10 @@ targets:
     type: application
     platform: iOS
     sources:
-      - WhamrandoApp.swift
-      - ContentView.swift
-    resources:
-      - Assets.xcassets
-      - LaunchScreen.storyboard
-      - Info.plist
+      - path: .
+        excludes:
+          - Info.plist
+          - project.yml
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.whamrando.app
       PRODUCT_DISPLAY_NAME: Whamrando

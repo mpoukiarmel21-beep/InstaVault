@@ -22,7 +22,7 @@ jobs:
           -configuration Release \
           -destination "generic/platform=iOS" \
           -archivePath $GITHUB_WORKSPACE/build/Whamrando.xcarchive \
-          archive CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM=""
+          archive CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=""
     - name: Export IPA
       run: |
         mkdir -p $GITHUB_WORKSPACE/output
@@ -32,7 +32,9 @@ jobs:
             <key>method</key>
             <string>debugging</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string></string>
             <key>compileBitcode</key>
             <false/>
             <key>teamId</key>

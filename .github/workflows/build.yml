@@ -42,4 +42,17 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Whamrando.ipa
-        path: $GITHUB_WORKSPACE/output/Whamrando.ipa
+        path: ${{ github.workspace }}/output/Whamrando.ipa
+        if-no-files-found: error
+    - name: Publish release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        cd $GITHUB_WORKSPACE/output
+        SHA=$(echo ${{ github.sha }} | cut -c1-7)
+        gh release create "whamrando-$SHA" Whamrando.ipa \
+          --title "Whamrando $SHA" \
+          --notes "Build automatique de ${{ github.ref_name }} (sha $SHA). IPA ad-hoc, installable via Sideloadly." \
+          --repo ${{ github.repository }} || \
+        gh release upload "whamrando-$SHA" Whamrando.ipa \
+          --repo ${{ github.repository }} --clobber

@@ -71,7 +71,20 @@ Base IG = **`INSTAGRAM.ipa`** (release `v1.0-ipa`). Correctifs précédents
 
 ## Journal
 
-### 2026-08-27 — Claude Code (Opus) — réinitialisation = déconnexion du compte principal + suppression conteneur confirmée (build-96)
+### 2026-08-28 — Claude Code (Opus) — Whamrando scaffold s01-app-scaffold pushé sur GitHub
+**Action** : terminé le scaffold SwiftUI de l'app iOS native Whamrando (iOS 26, Swift 6,
+SPM, zero deps). Commité sur `feature/s01-app-scaffold` et poussé sur GitHub — la CI `build.yml`
+devrait se déclencher pour valider le `xcodebuild archive`.
+
+**Scope** : App/WhamrandoApp.swift, App/ContentView.swift, App/Info.plist (permissions),
+App/Assets.xcassets (19 icônes + AppIcon), App/LaunchScreen.storyboard, App/Whamrando.xcodeproj/
+(project.pbxproj minimal valide pour CI), Package.swift, Sources/ {Models,Views,ViewModels,Services,
+Data,Resources} (.gitkeep), .github/workflows/build.yml, .gitignore, AGENT-HANDOFF.md mis à jour.
+
+**Prochaine étape** : valider que la CI passe verte. Si oui, passer à `s02-chip-detection`
+(détection puce A13-A18 via sysctl).
+
+---
 
 **Demande utilisatrice (verbatim)** : « Là je viens de réinstaller le fichier
 mais je suis directement tombé sur le conteneur par défaut qui a déjà le même

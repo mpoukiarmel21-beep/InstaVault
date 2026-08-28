@@ -10,6 +10,10 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Install xcodegen
+      run: brew install xcodegen
+    - name: Generate Xcode project
+      run: cd App && xcodegen
     - name: Build IPA
       run: |
         xcodebuild \

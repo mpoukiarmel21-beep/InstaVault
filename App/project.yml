@@ -1,0 +1,39 @@
+name: Whamrando
+options:
+  bundleIdPrefix: com.whamrando
+  deploymentTarget: 26.0
+  group: App
+  generateStyle: project
+configs:
+  Debug: debug
+  Release: release
+settings:
+  PRODUCT_NAME: Whamrando
+  SWIFT_VERSION: 6.0
+  ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  LD_RUNPATH_SEARCH_PATHS:
+    - .
+    - $(inherited)
+targets:
+  Whamrando:
+    type: application
+    platform: iOS
+    sources:
+      - WhamrandoApp.swift
+      - ContentView.swift
+    resources:
+      - Assets.xcassets
+      - LaunchScreen.storyboard
+      - Info.plist
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.whamrando.app
+      PRODUCT_DISPLAY_NAME: Whamrando
+      TARGETED_DEVICE_FAMILY: "1,2"
+      SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+      VALID_ARCHS: "arm64"
+      EXCLUDED_ARCHS: "$(inherited)"
+      ENABLE_BITCODE: "NO"
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: ""
+      DEVELOPMENT_TEAM: ""
+      INFOPLIST_FILE: Info.plist

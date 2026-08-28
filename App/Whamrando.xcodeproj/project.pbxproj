@@ -16,11 +16,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-000000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = GROUP; };
-000000000000000000000007 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = GROUP; };
-000000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = GROUP; };
-000000000000000000000009 /* WhamrandoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhamrandoApp.swift; sourceTree = GROUP; };
-00000000000000000000000A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = GROUP; };
+000000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+000000000000000000000007 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+000000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+000000000000000000000009 /* WhamrandoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhamrandoApp.swift; sourceTree = "<group>"; };
+00000000000000000000000A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 00000000000000000000000B /* Whamrando.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Whamrando.app; sourceTree = BLD; };
 /* End PBXFileReference section */
 
@@ -59,7 +59,7 @@
 		00000000000000000000000B /* Whamrando.app */,
 	);
 	name = Products;
-	sourceTree = GROUP;
+	sourceTree = "<group>";
 };
 /* End PBXGroup section */
 
@@ -124,7 +124,7 @@
 		LastUpgradeCheck = 1670;
 	};
 	buildConfigurationList = (000000000000000000000018 /* Build config list for project */);
-	compatibilityVersion = "Xcode 14.0";
+	compatibilityVersion = "Xcode 16.0";
 	developmentRegion = en;
 	hasScannedPlugins = 0;
 	knownRegions = (en, Base);
@@ -149,7 +149,7 @@
 		CURRENT_PROJECT_VERSION = 1;
 		DEBUG_INFORMATION_FORMAT = dwarf;
 		ENABLE_TESTABILITY = YES;
-		INFOPLIST_FILE = App/Info.plist;
+		INFOPLIST_FILE = Info.plist;
 		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
 		PRODUCT_NAME = $(TARGET_NAME);
 		SDKROOT = iphoneos;
@@ -166,7 +166,7 @@
 		CLANG_ENABLE_OBJC_ARC = YES;
 		CURRENT_PROJECT_VERSION = 1;
 		DEBUG_INFORMATION_FORMAT = "DWARF-with-dSYM";
-		INFOPLIST_FILE = App/Info.plist;
+		INFOPLIST_FILE = Info.plist;
 		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
 		PRODUCT_NAME = $(TARGET_NAME);
 		SDKROOT = iphoneos;
@@ -181,7 +181,7 @@
 	buildSettings = {
 		ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 		CODE_SIGN_STYLE = Automatic;
-		INFOPLIST_FILE = App/Info.plist;
+		INFOPLIST_FILE = Info.plist;
 		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
 		PRODUCT_NAME = Whamrando;
 		SDKROOT = iphoneos;
@@ -194,7 +194,7 @@
 	buildSettings = {
 		ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 		CODE_SIGN_STYLE = Automatic;
-		INFOPLIST_FILE = App/Info.plist;
+		INFOPLIST_FILE = Info.plist;
 		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
 		PRODUCT_NAME = Whamrando;
 		SDKROOT = iphoneos;

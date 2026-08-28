@@ -1,0 +1,229 @@
+#// !UTF8*
+//
+
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+
+	objects = {
+
+/* Begin PBXBuildFile section */
+000000000000000000000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000006 /* Assets.xcassets */; };
+000000000000000000000012 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000007 /* LaunchScreen.storyboard */; };
+000000000000000000000010 /* WhamrandoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000009 /* WhamrandoApp.swift */; };
+000000000000000000000011 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000A /* ContentView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+000000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+000000000000000000000007 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+000000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+000000000000000000000009 /* WhamrandoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhamrandoApp.swift; sourceTree = "<group>"; };
+00000000000000000000000A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+00000000000000000000000B /* Whamrando.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Whamrando.app; sourceTree = BLD; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+000000000000000000000003 = {
+	isa = PBXGroup;
+	children = (
+		000000000000000000000009 /* WhamrandoApp.swift */,
+		00000000000000000000000A /* ContentView.swift */,
+	);
+	name = Sources;
+	sourceTree = "<group>";
+};
+000000000000000000000004 = {
+	isa = PBXGroup;
+	children = (
+		000000000000000000000006 /* Assets.xcassets */,
+		000000000000000000000007 /* LaunchScreen.storyboard */,
+		000000000000000000000008 /* Info.plist */,
+	);
+	name = Resources;
+	sourceTree = "<group>";
+};
+000000000000000000000002 = {
+	isa = PBXGroup;
+	children = (
+		000000000000000000000003 /* Sources */,
+		000000000000000000000004 /* Resources */,
+		000000000000000000000005 /* Products */,
+	);
+	sourceTree = "<group>";
+};
+000000000000000000000005 = {
+	isa = PBXGroup;
+	children = (
+		00000000000000000000000B /* Whamrando.app */,
+	);
+	name = Products;
+	sourceTree = "<group>";
+};
+/* End PBXGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+00000000000000000000000D = {
+	isa = PBXFrameworksBuildPhase;
+	buildActionMask = 0;
+	files = (
+	);
+	runOnlyForPreparationFiles = YES;
+};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+00000000000000000000000F = {
+	isa = PBXResourcesBuildPhase;
+	buildActionMask = 0;
+	files = (
+		000000000000000000000013 /* Assets.xcassets in Resources */,
+		000000000000000000000012 /* LaunchScreen.storyboard in Resources */,
+	);
+	runOnlyForPreparationFiles = YES;
+};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+00000000000000000000000E = {
+	isa = PBXSourcesBuildPhase;
+	buildActionMask = 0;
+	files = (
+		000000000000000000000010 /* WhamrandoApp.swift in Sources */,
+		000000000000000000000011 /* ContentView.swift in Sources */,
+	);
+	runOnlyForPreparationFiles = YES;
+};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+00000000000000000000000C = {
+	isa = PBXNativeTarget;
+	buildConfigurationList = (000000000000000000000019 /* Build config list for target */);
+	buildPhases = (
+		00000000000000000000000D /* Frameworks */,
+		00000000000000000000000E /* Sources */,
+		00000000000000000000000F /* Resources */,
+	);
+	buildRules = (
+	);
+	dependencies = (
+	);
+	name = Whamrando;
+	productName = Whamrando;
+	productReference = 00000000000000000000000B /* Whamrando.app */;
+	productType = "com.apple.product-type.application";
+};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+000000000000000000000001 = {
+	isa = PBXProject;
+	attributes = {
+		LastUpgradeCheck = 1670;
+	};
+	buildConfigurationList = (000000000000000000000018 /* Build config list for project */);
+	compatibilityVersion = "Xcode 16.0";
+	developmentRegion = en;
+	hasScannedPlugins = 0;
+	knownRegions = (en, Base);
+	mainGroup = 000000000000000000000002 /* Group */;
+	productRefGroup = 000000000000000000000005 /* Products */;
+	projectDirPath = "";
+	projectRoot = "";
+	targets = (
+		00000000000000000000000C /* Whamrando */,
+	);
+};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+000000000000000000000014 = {
+	isa = XCBuildConfiguration;
+	buildSettings = {
+		ALWAYS_SEARCH_USER_PATHS = NO;
+		CLANG_ANALYZER_NONNULL = YES;
+		CLANG_ENABLE_MODULES = YES;
+		CLANG_ENABLE_OBJC_ARC = YES;
+		CURRENT_PROJECT_VERSION = 1;
+		DEBUG_INFORMATION_FORMAT = dwarf;
+		ENABLE_TESTABILITY = YES;
+		INFOPLIST_FILE = Info.plist;
+		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
+		PRODUCT_NAME = $(TARGET_NAME);
+		SDKROOT = iphoneos;
+		SWIFT_VERSION = 6.0;
+	};
+	name = Debug;
+};
+000000000000000000000015 = {
+	isa = XCBuildConfiguration;
+	buildSettings = {
+		ALWAYS_SEARCH_USER_PATHS = NO;
+		CLANG_ANALYZER_NONNULL = YES;
+		CLANG_ENABLE_MODULES = YES;
+		CLANG_ENABLE_OBJC_ARC = YES;
+		CURRENT_PROJECT_VERSION = 1;
+		DEBUG_INFORMATION_FORMAT = "DWARF-with-dSYM";
+		INFOPLIST_FILE = Info.plist;
+		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
+		PRODUCT_NAME = $(TARGET_NAME);
+		SDKROOT = iphoneos;
+		SWIFT_COMPILATION_MODE = wholemodule;
+		SWIFT_OPTIMIZATION_LEVEL = "-O";
+		SWIFT_VERSION = 6.0;
+	};
+	name = Release;
+};
+000000000000000000000016 = {
+	isa = XCBuildConfiguration;
+	buildSettings = {
+		ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+		CODE_SIGN_STYLE = Automatic;
+		INFOPLIST_FILE = Info.plist;
+		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
+		PRODUCT_NAME = Whamrando;
+		SDKROOT = iphoneos;
+		SWIFT_VERSION = 6.0;
+	};
+	name = Debug;
+};
+000000000000000000000017 = {
+	isa = XCBuildConfiguration;
+	buildSettings = {
+		ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+		CODE_SIGN_STYLE = Automatic;
+		INFOPLIST_FILE = Info.plist;
+		PRODUCT_BUNDLE_IDENTIFIER = "com.whamrando.app";
+		PRODUCT_NAME = Whamrando;
+		SDKROOT = iphoneos;
+		SWIFT_VERSION = 6.0;
+	};
+	name = Release;
+};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+000000000000000000000018 = {
+	isa = XCConfigurationList;
+	buildConfigurations = (
+		000000000000000000000014,
+		000000000000000000000015,
+	);
+	defaultConfigurationIsVisible = NO;
+};
+000000000000000000000019 = {
+	isa = XCConfigurationList;
+	buildConfigurations = (
+		000000000000000000000016,
+		000000000000000000000017,
+	);
+	defaultConfigurationIsVisible = NO;
+};
+/* End XCConfigurationList section */
+
+	};
+
+	rootObject = 000000000000000000000001 /* Project object */;
+}

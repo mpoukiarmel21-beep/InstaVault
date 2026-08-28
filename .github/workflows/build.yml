@@ -1,144 +1,63 @@
-name: Build InstaVault IPA
+name: Build Whamrando IPA
 
 on:
+  push:
+    branches: [feature/*]
   workflow_dispatch:
-    inputs:
-      ipa_url:
-        description: 'Release tag (e.g. v1.0-ipa), direct URL, or Gofile folder code'
-        required: true
-        type: string
 
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Theos
-        run: |
-          export THEOS=~/theos
-          if [ ! -d "$THEOS" ]; then
-            git clone --recursive https://github.com/theos/theos.git $THEOS
-          fi
-          if [ ! -d "$THEOS/sdks/master" ]; then
-            curl -LO https://github.com/theos/sdks/archive/master.tar.gz
-            tar -xzf master.tar.gz -C $THEOS/sdks/ --strip-components=1
-          fi
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
-          echo "$THEOS/bin" >> $GITHUB_PATH
-          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
-          brew install ldid
-          # Build insert-dylib from source
-          if ! command -v insert_dylib &>/dev/null; then
-            git clone https://github.com/tyilo/insert_dylib.git /tmp/insert_dylib
-            cd /tmp/insert_dylib
-            xcodebuild -quiet
-            cp build/Release/insert_dylib /usr/local/bin/
-            chmod +x /usr/local/bin/insert_dylib
-          fi
-
-      - name: Build Dylib
-        run: |
-          export PATH="$THEOS/bin:$PATH"
-          cd Tweak
-          make clean all
-          echo "=== Built files ==="
-          find .theos/obj -name "*.dylib" -type f
-          DYLIB=$(find .theos/obj -name "*.dylib" -type f | head -1)
-          echo "=== otool -L ==="
-          otool -L "$DYLIB"
-          # Guard: a CydiaSubstrate dependency makes the dylib fail to load on
-          # non-jailbroken (sideloaded) devices — the whole tweak would be dead.
-          if otool -L "$DYLIB" | grep -qi "substrate"; then
-            echo "::error::Dylib links CydiaSubstrate — it will NOT load on sideloaded devices. Build aborted."
-            exit 1
-          fi
-          echo "OK: substrate-free dylib"
-
-      - name: Download IPA
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          IPA_URL="${{ inputs.ipa_url }}"
-          if [[ "$IPA_URL" == *gofile.io* ]]; then
-            FOLDER_CODE=$(echo "$IPA_URL" | sed 's|.*/d/||' | sed 's|/.*||')
-            python3 "$GITHUB_WORKSPACE/Tweak/download_gofile.py" "$FOLDER_CODE"
-          elif [[ "$IPA_URL" == *github.com*releases*download* ]]; then
-            # GitHub release direct download URL — extract tag and asset name
-            REPO=$(echo "$IPA_URL" | sed -E 's|https?://github.com/||; s|/releases/download/.*||')
-            TAG=$(echo "$IPA_URL" | sed -E 's|.*/releases/download/||; s|/[^/]*$||')
-            ASSET=$(echo "$IPA_URL" | sed -E 's|.*/releases/download/[^/]+/||')
-            echo "Downloading from repo=$REPO tag=$TAG asset=$ASSET"
-            gh release download "$TAG" --repo "$REPO" --pattern "$ASSET" -O Input.ipa
-          elif [[ "$IPA_URL" == http* ]]; then
-            echo "Downloading IPA from: $IPA_URL"
-            curl -L -o Input.ipa "$IPA_URL" --connect-timeout 30 --max-time 600
-          else
-            echo "Trying GitHub release tag: $IPA_URL"
-            gh release download "$IPA_URL" --pattern "*.ipa" -D . 2>/dev/null \
-              || curl -L -o Input.ipa "https://github.com/mpoukiarmel21-beep/InstaVault/releases/download/$IPA_URL/com.burbn.instagram_442.0.0_und3fined.ipa" --connect-timeout 30 --max-time 600
-          fi
-          file Input.ipa
-          ls -lh Input.ipa
-
-      - name: Inject & Package IPA
-        run: |
-          export PATH="$THEOS/bin:$PATH"
-          DYLIB=$(find Tweak/.theos/obj -name "*.dylib" -type f | head -1)
-          echo "Dylib: $DYLIB"
-
-          WORKDIR=$(mktemp -d)
-          cd "$WORKDIR"
-
-          echo "[1/5] Extracting IPA..."
-          unzip -q "$GITHUB_WORKSPACE/Input.ipa"
-
-          APP=$(ls -d Payload/*.app | head -1)
-          echo "App: $APP"
-
-          echo "[2/5] Copying dylib..."
-          mkdir -p "$APP/Frameworks"
-          cp "$GITHUB_WORKSPACE/$DYLIB" "$APP/Frameworks/InstaVault.dylib"
-
-          echo "[3/5] Injecting load command..."
-          insert_dylib --strip-codesig --inplace "@executable_path/Frameworks/InstaVault.dylib" "$APP/Instagram"
-
-          echo "[4/5] Re-signing ad-hoc..."
-          for fw in "$APP/Frameworks/"*.dylib; do
-            codesign --force --sign - "$fw"
-          done
-          codesign --force --sign - "$APP/Instagram"
-
-          echo "[5/5] Creating IPA..."
-          zip -r -q "$GITHUB_WORKSPACE/InstaVault.ipa" Payload/
-
-          echo "=== Done ==="
-          ls -lh "$GITHUB_WORKSPACE/InstaVault.ipa"
-
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: InstaVault-IPA
-          path: InstaVault.ipa
-          retention-days: 30
-
-      - name: Upload IPA to Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          REPO="${{ github.repository }}"
-          TAG="build-${{ github.run_number }}"
-          gh release create "$TAG" --repo "$REPO" --title "InstaVault Build ${{ github.run_number }}" --notes "Automated build from run ${{ github.run_number }}" || true
-          gh release upload "$TAG" InstaVault.ipa --repo "$REPO" --clobber
-          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/$TAG/InstaVault.ipa" >> $GITHUB_ENV
-
-      - name: Print Download URL
-        run: |
-          echo "=============================="
-          echo "DOWNLOAD YOUR IPA HERE:"
-          echo "$DOWNLOAD_URL"
-          echo "=============================="
+    - uses: actions/checkout@v4
+    - name: Install xcodegen
+      run: brew install xcodegen
+    - name: Run SPM tests
+      run: swift test
+    - name: Generate Xcode project
+      run: cd App && xcodegen
+    - name: Build IPA
+      run: |
+        xcodebuild \
+          -project App/Whamrando.xcodeproj \
+          -scheme Whamrando \
+          -configuration Release \
+          -destination "generic/platform=iOS" \
+          -archivePath $GITHUB_WORKSPACE/build/Whamrando.xcarchive \
+          archive CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=""
+    - name: Export IPA
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/output
+        # Xcode 26's -exportArchive requires a development team for code signing.
+        # For ad-hoc builds without an Apple ID, extract the .app bundle from
+        # the archive and repackage as .ipa directly.
+        APP_PATH=$(find $GITHUB_WORKSPACE/build/Whamrando.xcarchive -name "Whamrando.app" -type d | head -1)
+        echo "Found app at: $APP_PATH"
+        mkdir -p $GITHUB_WORKSPACE/output/Payload
+        cp -r "$APP_PATH" $GITHUB_WORKSPACE/output/Payload/
+        cd $GITHUB_WORKSPACE/output
+        # codesign ad-hoc to strip any existing signature
+        codesign --force --sign - Payload/Whamrando.app
+        # Create the IPA (zip the Payload directory)
+        zip -r -q $GITHUB_WORKSPACE/output/Whamrando.ipa Payload/
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: Whamrando.ipa
+        path: ${{ github.workspace }}/output/Whamrando.ipa
+        if-no-files-found: error
+    - name: Publish release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        cd $GITHUB_WORKSPACE/output
+        SHA=$(echo ${{ github.sha }} | cut -c1-7)
+        gh release create "whamrando-$SHA" Whamrando.ipa \
+          --title "Whamrando $SHA" \
+          --notes "Build automatique de ${{ github.ref_name }} (sha $SHA). IPA ad-hoc, installable via Sideloadly." \
+          --repo ${{ github.repository }} || \
+        gh release upload "whamrando-$SHA" Whamrando.ipa \
+          --repo ${{ github.repository }} --clobber

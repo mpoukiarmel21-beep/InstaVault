@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!--
+  Intentionally EMPTY. The tweak needs no special entitlements: the HOME
+  redirect uses setenv(3) and keychain namespacing prefixes kSecAttrService
+  within the app's own default access group. The previous contents
+  (app-sandbox=false, com.apple.private.security.no-sandbox, a bogus
+  keychain-access-group) can NEVER be authorised by a free Apple ID and would
+  make a Sideloadly re-sign fail to install (invalid entitlements / AMFI kill).
+  The CI (build.yml) ad-hoc signs and does NOT use this file; keep it empty so
+  it is harmless even if a signer is pointed at it.
+-->
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<false/>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>com.apple.cfprefs.*</string>
-	</array>
-	<key>com.apple.private.security.no-sandbox</key>
-	<true/>
 </dict>
 </plist>

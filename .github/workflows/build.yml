@@ -26,25 +26,20 @@ jobs:
     - name: Export IPA
       run: |
         mkdir -p $GITHUB_WORKSPACE/output
-        cat > /tmp/expopt.plist << 'EOF'
-        <plist version="1.0">
-        <dict>
-            <key>method</key>
-            <string>debugging</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>signingCertificate</key>
-            <string></string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>teamId</key>
-            <string></string>
-        </dict>
-        </plist>
-        EOF
-        xcodebuild -exportArchive -archivePath $GITHUB_WORKSPACE/build/Whamrando.xcarchive -exportPath $GITHUB_WORKSPACE/output -exportOptionsPlist /tmp/expopt.plist
+        # Xcode 26's -exportArchive requires a development team for code signing.
+        # For ad-hoc builds without an Apple ID, extract the .app bundle from
+        # the archive and repackage as .ipa directly.
+        APP_PATH=$(find $GITHUB_WORKSPACE/build/Whamrando.xcarchive -name "Whamrando.app" -type d | head -1)
+        echo "Found app at: $APP_PATH"
+        mkdir -p $GITHUB_WORKSPACE/output/Payload
+        cp -r "$APP_PATH" $GITHUB_WORKSPACE/output/Payload/
+        cd $GITHUB_WORKSPACE/output
+        # codesign ad-hoc to strip any existing signature
+        codesign --force --sign - Payload/Whamrando.app
+        # Create the IPA (zip the Payload directory)
+        zip -r -q $GITHUB_WORKSPACE/output/Whamrando.ipa Payload/
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
         name: Whamrando.ipa
-        path: $GITHUB_WORKSPACE/output/*.ipa
+        path: $GITHUB_WORKSPACE/output/Whamrando.ipa

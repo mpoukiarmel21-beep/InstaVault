@@ -102,29 +102,25 @@ function generateIcon(size, outputPath) {
 
 const iconDir = path.join(__dirname, '..', 'App', 'Assets.xcassets', 'AppIcon.appiconset');
 
+// size = points, scale = pixel density. The generated PNG must be
+// size * scale pixels wide/tall (e.g. 20pt @3x = 60x60 px).
 const sizes = [
-  { size: 20, suffix: '' },
-  { size: 29, suffix: '' },
-  { size: 40, suffix: '' },
-  { size: 58, suffix: '@2x' },
-  { size: 60, suffix: '@2x' },
-  { size: 76, suffix: '' },
-  { size: 80, suffix: '@2x' },
-  { size: 87, suffix: '@2x' },
-  { size: 120, suffix: '@2x' },
-  { size: 152, suffix: '@2x' },
-  { size: 167, suffix: '@2x' },
-  { size: 1024, suffix: '' },
-  { size: 20, suffix: '@3x' },
-  { size: 29, suffix: '@3x' },
-  { size: 40, suffix: '@3x' },
-  { size: 60, suffix: '@3x' },
+  { pt: 20, scale: 2 },
+  { pt: 20, scale: 3 },
+  { pt: 29, scale: 2 },
+  { pt: 29, scale: 3 },
+  { pt: 40, scale: 2 },
+  { pt: 40, scale: 3 },
+  { pt: 60, scale: 2 },
+  { pt: 60, scale: 3 },
+  { pt: 1024, scale: 1 },
 ];
 
 for (const item of sizes) {
-  const { size, suffix } = item;
-  const filename = suffix ? 'AppIcon-' + size + suffix + '.png' : 'AppIcon-' + size + '.png';
-  generateIcon(size, path.join(iconDir, filename));
+  const { pt, scale } = item;
+  const px = pt * scale;
+  const filename = scale === 1 ? 'AppIcon-' + pt + '.png' : 'AppIcon-' + pt + '@' + scale + 'x.png';
+  generateIcon(px, path.join(iconDir, filename));
 }
 
 console.log('All ' + sizes.length + ' icons generated successfully!');

@@ -7,6 +7,7 @@
 #import "IVThemeManager.h"
 #import "IVPaths.h"
 #import <UIKit/UIKit.h>
+#import <PhotosUI/PhotosUI.h>
 
 @interface IVContainerListVC () <UITableViewDelegate, UITableViewDataSource, PHPickerViewControllerDelegate>
 @property (nonatomic, strong) UITableView *table;

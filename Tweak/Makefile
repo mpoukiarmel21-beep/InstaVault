@@ -40,6 +40,6 @@ InstaVault_FILES = Source/Tweak.xm \
 	Source/IVThemeManager.m
 
 InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-error=unguarded-availability-new -ISource
-InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport AVFoundation CoreMedia CoreVideo CoreImage ImageIO
+InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport AVFoundation CoreMedia CoreVideo CoreImage ImageIO PhotosUI
 
 include $(THEOS_MAKE_PATH)/library.mk

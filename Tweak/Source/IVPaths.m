@@ -58,7 +58,7 @@ static void IVApplyProtection(NSString *path) {
 }
 
 + (NSString *)containerRootForCID:(NSString *)cid {
-    return [[[[self realHome] stringByAppendingPathComponent:@"Documents"]
+    return [[[[[self realHome] stringByAppendingPathComponent:@"Documents"]
                 stringByAppendingPathComponent:@"InstaVault"]
                 stringByAppendingPathComponent:@"Containers"]
                 stringByAppendingPathComponent:cid];

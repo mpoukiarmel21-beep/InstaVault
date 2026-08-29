@@ -19,9 +19,17 @@ InstaVault_FILES = Source/Tweak.xm \
 	Source/IVDeviceSpoofing.m \
 	Source/IVLocationSpoofing.m \
 	Source/IVDiagnostics.m \
+	Source/IVPaths.m \
+	Source/IVHomeRedirect.m \
+	Source/IVKeychainHook.m \
+	Source/IVPrefsHook.m \
+	Source/IVAppGroupHook.m \
+	Source/IVHardening.m \
+	Source/IVLocaleSpoof.m \
+	Source/IVCameraHook.m \
+	Source/vendor/fishhook/fishhook.c \
 	Source/IVHardwareHook.xm \
 	Source/IVIdentifierHook.xm \
-	Source/IVKeychainHook.xm \
 	Source/IVCookieHook.xm \
 	Source/IVLocationHook.xm \
 	Source/IVUserDefaultsHook.xm \
@@ -31,7 +39,7 @@ InstaVault_FILES = Source/Tweak.xm \
 	Source/IVMapPickerVC.m \
 	Source/IVThemeManager.m
 
-InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-error=unguarded-availability-new
-InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport
+InstaVault_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-error=unguarded-availability-new -ISource
+InstaVault_FRAMEWORKS = UIKit CoreLocation MapKit Security SystemConfiguration AdSupport AVFoundation CoreMedia CoreVideo CoreImage ImageIO
 
 include $(THEOS_MAKE_PATH)/library.mk

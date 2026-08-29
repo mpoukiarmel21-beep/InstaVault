@@ -4,12 +4,14 @@
 #import "IVContainer.h"
 #import "IVFakeDevice.h"
 #import "IVThemeManager.h"
+#import "IVLocaleSpoof.h"
 #import <UIKit/UIKit.h>
 
 typedef NS_ENUM(NSInteger, IVCreateSection) {
     IVCreateSectionName,
     IVCreateSectionDevice,
     IVCreateSectionLocation,
+    IVCreateSectionLocale,
     IVCreateSectionCount
 };
 
@@ -19,6 +21,8 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
 @property (nonatomic, strong) IVFakeDevice *device;
 @property (nonatomic, assign) CLLocationCoordinate2D coord;
 @property (nonatomic, copy) NSString *locName;
+@property (nonatomic, copy) NSString *appLanguage;
+@property (nonatomic, copy) NSString *regionCountry;
 @property (nonatomic, strong) UIButton *saveBtn;
 @end
 
@@ -113,6 +117,8 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
             c.location = self.coord;
             c.locName = self.locName;
         }
+        c.appLanguage = self.appLanguage;
+        c.regionCountry = self.regionCountry;
         [m save];
         [m activate:c];
         [self dismissViewControllerAnimated:YES completion:nil];
@@ -130,6 +136,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
         case IVCreateSectionName: return 1;
         case IVCreateSectionDevice: return 2;
         case IVCreateSectionLocation: return 2;
+        case IVCreateSectionLocale: return 2;
         default: return 0;
     }
 }
@@ -139,6 +146,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
         case IVCreateSectionName: return @"Container Name";
         case IVCreateSectionDevice: return @"Device Identity";
         case IVCreateSectionLocation: return @"Fake Location";
+        case IVCreateSectionLocale: return @"Language & Region";
         default: return nil;
     }
 }
@@ -148,6 +156,7 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
         case IVCreateSectionName: return @"A unique name to identify this container";
         case IVCreateSectionDevice: return @"Each container gets a unique device identity";
         case IVCreateSectionLocation: return @"Optional: Set a fake GPS location";
+        case IVCreateSectionLocale: return @"Optional: Pin the app language and region for this container";
         default: return nil;
     }
 }
@@ -202,6 +211,23 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
             }
             break;
         }
+        case IVCreateSectionLocale: {
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            if (ip.row == 0) {
+                cell.textLabel.text = @"App Language";
+                cell.detailTextLabel.text = self.appLanguage.length
+                    ? [IVLocaleSpoof displayNameForLanguage:self.appLanguage]
+                    : @"Default (device)";
+                cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+            } else if (ip.row == 1) {
+                cell.textLabel.text = @"Region / Country";
+                cell.detailTextLabel.text = self.regionCountry.length
+                    ? [IVLocaleSpoof displayNameForRegion:self.regionCountry]
+                    : @"Default (device)";
+                cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+            }
+            break;
+        }
     }
     return cell;
 }
@@ -226,7 +252,57 @@ typedef NS_ENUM(NSInteger, IVCreateSection) {
             self.locName = nil;
             [tv reloadData];
         }
+    } else if (ip.section == IVCreateSectionLocale) {
+        if (ip.row == 0) {
+            [self showLanguagePicker];
+        } else if (ip.row == 1) {
+            [self showRegionPicker];
+        }
     }
+}
+
+- (void)showLanguagePicker {
+    NSArray *codes = [IVLocaleSpoof supportedLanguageCodes];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"App Language"
+                                                               message:nil
+                                                        preferredStyle:UIAlertControllerStyleActionSheet];
+    NSString *dl = [IVLocaleSpoof deviceLanguage] ?: @"en";
+    [a addAction:[UIAlertAction actionWithTitle:@"Default (device)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+        self.appLanguage = nil;
+        [self.table reloadData];
+    }]];
+    for (NSString *code in codes) {
+        NSString *title = [IVLocaleSpoof displayNameForLanguage:code];
+        NSString *suffix = ([code isEqualToString:dl]) ? @"  (device)" : @"";
+        [a addAction:[UIAlertAction actionWithTitle:[title stringByAppendingString:suffix] style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+            self.appLanguage = code;
+            [self.table reloadData];
+        }]];
+    }
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)showRegionPicker {
+    NSArray *codes = [IVLocaleSpoof supportedRegionCodes];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Region / Country"
+                                                               message:nil
+                                                        preferredStyle:UIAlertControllerStyleActionSheet];
+    NSString *dr = [IVLocaleSpoof deviceRegion];
+    [a addAction:[UIAlertAction actionWithTitle:@"Default (device)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+        self.regionCountry = nil;
+        [self.table reloadData];
+    }]];
+    for (NSString *code in codes) {
+        NSString *title = [IVLocaleSpoof displayNameForRegion:code];
+        NSString *suffix = (dr && [code isEqualToString:dr]) ? @"  (device)" : @"";
+        [a addAction:[UIAlertAction actionWithTitle:[title stringByAppendingString:suffix] style:UIAlertActionStyleDefault handler:^(UIAlertAction *act) {
+            self.regionCountry = code;
+            [self.table reloadData];
+        }]];
+    }
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)showModelPicker {

@@ -2,9 +2,8 @@
 #import "IVContainer.h"
 #import "IVDeviceSpoofing.h"
 #import "IVLocationSpoofing.h"
+#import "IVPaths.h"
 #import "IVDiagnostics.h"
-
-static NSString *const kIVListPath = @"InstaVault/Containers/list.plist";
 
 NSString *const kIVListChanged = @"kIVListChanged";
 NSString *const kIVActiveChanged = @"kIVActiveChanged";
@@ -29,12 +28,14 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
 }
 
 - (NSString *)listFile {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *dir = [paths.firstObject stringByAppendingPathComponent:@"InstaVault"];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:dir]) {
-        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *dir = [IVPaths controlDir];
+    if (!dir.length) return nil;
+    NSString *containersDir = [dir stringByAppendingPathComponent:@"Containers"];
+    if (![fm fileExistsAtPath:containersDir]) {
+        [fm createDirectoryAtPath:containersDir withIntermediateDirectories:YES attributes:nil error:nil];
     }
-    return [dir stringByAppendingPathComponent:kIVListPath];
+    return [containersDir stringByAppendingPathComponent:@"list.plist"];
 }
 
 - (void)load {
@@ -97,13 +98,11 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     [_lock unlock];
     [self save];
 
-    [[IVDeviceSpoofing shared] enable:c.device];
-    if ([c hasLocation]) [[IVLocationSpoofing shared] enable:c.location];
-    else [[IVLocationSpoofing shared] disable];
-
     [[NSNotificationCenter defaultCenter] postNotificationName:kIVActiveChanged object:nil];
     [[NSNotificationCenter defaultCenter] postNotificationName:kIVListChanged object:nil];
     [[IVDiagnostics shared] info:[NSString stringWithFormat:@"Activated: %@", c.name]];
+
+    [self relaunchForIsolation];
 }
 
 - (void)deactivate {
@@ -113,11 +112,20 @@ NSString *const kIVActiveChanged = @"kIVActiveChanged";
     [_lock unlock];
     [self save];
 
-    [[IVDeviceSpoofing shared] disable];
-    [[IVLocationSpoofing shared] disable];
-
     [[NSNotificationCenter defaultCenter] postNotificationName:kIVActiveChanged object:nil];
     [[IVDiagnostics shared] info:@"Deactivated all"];
+
+    [self relaunchForIsolation];
+}
+
+// Isolation (HOME/Keychain/CFPreferences/App-Group redirects) is applied ONCE at
+// process load and cannot be re-pointed mid-process, so any change to the active
+// container must be followed by a clean cold relaunch for the new isolation to
+// take effect (the constructor re-applies it for the newly active container).
+- (void)relaunchForIsolation {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        exit(0);
+    });
 }
 
 @end

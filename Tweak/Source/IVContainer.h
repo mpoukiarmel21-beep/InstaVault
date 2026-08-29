@@ -9,6 +9,8 @@
 @property (nonatomic, assign) CLLocationCoordinate2D location;
 @property (nonatomic, copy) NSString *locName;
 @property (nonatomic, copy) NSString *color;
+@property (nonatomic, copy) NSString *appLanguage;
+@property (nonatomic, copy) NSString *regionCountry;
 @property (nonatomic, assign) BOOL active;
 @property (nonatomic, strong) NSDate *created;
 @property (nonatomic, strong) NSDate *lastUsed;

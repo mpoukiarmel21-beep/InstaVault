@@ -6,6 +6,73 @@
 #import "IVFloatingButton.h"
 #import "IVContainerListVC.h"
 #import "IVContainer.h"
+#import "IVPaths.h"
+#import "IVHomeRedirect.h"
+#import "IVKeychainHook.h"
+#import "IVPrefsHook.h"
+#import "IVAppGroupHook.h"
+#import "IVHardening.h"
+#import "IVLocaleSpoof.h"
+#import "IVCameraHook.h"
+
+// The cid this process actually booted (and applied isolation) for. Set ONCE in
+// the constructor to the RESOLVED active cid — even on a degraded boot, so the
+// guard below compares against what we ran as, not what we wished we ran as.
+static NSString *gBootstrappedCID = nil;
+
+// Backstop for the app-switcher WARM-RESUME leak. The constructor runs exactly
+// once per COLD launch, so the HOME/keychain/CFPreferences/App-Group redirects are
+// applied only then. If the user switches the active container from the panel, the
+// process exits for a clean cold relaunch that re-applies isolation. But if the
+// change happened while the app was only SUSPENDED (its card never force-quit from
+// the switcher) and iOS resumes it warm, the constructor does NOT re-run: the
+// process keeps the OLD container's redirects while the on-disk activeCID now
+// points to the newly chosen one, so the account surfaces on the wrong/default
+// identity. Redirects can't be re-applied mid-process (one-shot at load), so on
+// every foreground we compare the live active to what we booted with and exit(0)
+// on a mismatch; iOS then cold-launches us and the constructor applies the correct
+// isolation.
+static void IVInstallStaleContainerGuard(void) {
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification *n) {
+        NSString *booted  = gBootstrappedCID ?: @"";
+        IVContainer *m    = [IVContainerManager shared].active;
+        NSString *current = m.cid ?: @"";
+        if (![booted isEqualToString:current]) {
+            IVLog(@"stale container on resume (booted=%@ now=%@) — exiting for a clean cold relaunch",
+                  booted, current);
+            exit(0);
+        }
+    }];
+}
+
+// Task C — keep the isolated container's SESSION data lock-readable "for life".
+// New files Instagram writes at runtime (cookies, tokens, WebKit/HTTPStorages,
+// prefs) inherit NSFileProtectionComplete, which is unreadable once the device
+// locks — so hours later a background relaunch can't read the session and the
+// account looks logged out. Each time the app backgrounds, re-stamp the whole
+// active-container tree down to CompleteUntilFirstUserAuthentication so it
+// survives any post-boot lock. Only the isolated container root is passed in —
+// never Instagram's real sandbox.
+static void IVInstallBackgroundReprotect(NSString *containerRoot) {
+    if (!containerRoot.length) return;
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification *n) {
+        UIApplication *app = [UIApplication sharedApplication];
+        __block UIBackgroundTaskIdentifier task = UIBackgroundTaskInvalid;
+        task = [app beginBackgroundTaskWithName:@"IVReprotect" expirationHandler:^{
+            if (task != UIBackgroundTaskInvalid) { [app endBackgroundTask:task]; task = UIBackgroundTaskInvalid; }
+        }];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            [IVPaths reapplyProtectionRecursivelyAtRoot:containerRoot];
+            if (task != UIBackgroundTaskInvalid) { [app endBackgroundTask:task]; task = UIBackgroundTaskInvalid; }
+        });
+    }];
+}
 
 @interface IVOverlayWindow : UIWindow
 @end
@@ -103,14 +170,66 @@ static void IVInit() {
         [[IVDiagnostics shared] info:@"Tweak init"];
         [[IVDiagnostics shared] installCrashHandler];
 
+        // 1. Capture the REAL sandbox home before any redirect touches env vars.
+        [IVPaths captureRealHome];
+
         IVContainerManager *m = [IVContainerManager shared];
         [m load];
-        if (m.active) {
-            [[IVDeviceSpoofing shared] enable:m.active.device];
-            if ([m.active hasLocation])
-                [[IVLocationSpoofing shared] enable:m.active.location];
-            [[IVDiagnostics shared] info:[NSString stringWithFormat:@"Restored: %@", m.active.name]];
+
+        // Resolve the active container. nil == the REAL Instagram account (stays on
+        // the real sandbox + real keychain). Non-nil == an isolated container.
+        IVContainer *active = m.active;
+        BOOL isolated = NO;
+
+        if (active) {
+            [[IVDiagnostics shared] info:[NSString stringWithFormat:@"Restored: %@", active.name]];
+
+            // Isolation redirects — applied ONCE, only for an active container, and
+            // ATOMICALLY: the HOME redirect (files), the keychain namespace, the
+            // CFPreferences redirect, and the App Group container redirect must ALL
+            // succeed together, or none takes effect. A half-applied state is a
+            // cross-container identity leak. On any failure we roll back to the real
+            // sandbox rather than launch half-isolated.
+            BOOL homeOK  = [IVHomeRedirect applyForContainer:active];
+            BOOL keyOK   = homeOK && [IVKeychainHook installWithPrefix:[NSString stringWithFormat:@"IV:%@:", active.cid]];
+            BOOL prefsOK = keyOK && [IVPrefsHook installForContainer:active];
+            BOOL groupOK = prefsOK && [IVAppGroupHook installForContainer:active];
+            if (homeOK && keyOK && prefsOK && groupOK) {
+                isolated = YES;
+            } else {
+                [IVHomeRedirect revertToRealHome];
+                IVErr(@"Isolation FAILED for %@ (home=%d key=%d prefs=%d group=%d) — reverted to real sandbox to avoid split-brain leak",
+                      active.cid, homeOK, keyOK, prefsOK, groupOK);
+            }
+        } else {
+            // No active container: install the keychain in HIDE mode so the real
+            // account's view never includes another container's IV:-marked items.
+            // Best-effort — a failure just keeps the prior passthrough, never blocks
+            // launch, and never touches files/prefs (the real account stays intact).
+            [IVKeychainHook installDefaultHideMode];
         }
+
+        // Remember what we booted as, for the warm-resume stale guard.
+        gBootstrappedCID = [active.cid copy];
+
+        // Device/location/locale/timezone spoofing + hardening — only when isolation
+        // is actually active. Spoofing the device while files/keychain sit on the
+        // real account would make the primary login report a different device.
+        if (isolated && active) {
+            [[IVDeviceSpoofing shared] enable:active.device];
+            if ([active hasLocation]) [[IVLocationSpoofing shared] enable:active.location];
+            [IVLocaleSpoof installForContainer:active];
+            [IVHardening installForContainer:active];
+
+            NSString *root = [IVPaths containerRootForCID:active.cid];
+            [IVPaths reapplyProtectionRecursivelyAtRoot:root];
+            IVInstallBackgroundReprotect(root);
+        }
+
+        // Global virtual camera — GLOBAL, not gated to isolation: one shared
+        // verification video for every container. No-op (real camera untouched)
+        // when no global video is configured.
+        [IVCameraHook installGlobal];
 
         [[NSNotificationCenter defaultCenter] addObserverForName:kIVActiveChanged object:nil
             queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
@@ -135,5 +254,9 @@ static void IVInit() {
                 IVAttachButton();
             }];
         });
+
+        // Warm-resume backstop: force a clean cold relaunch if the active container
+        // changed while we were only suspended (app-switcher resume).
+        IVInstallStaleContainerGuard();
     }
 }

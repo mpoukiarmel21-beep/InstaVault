@@ -10,3 +10,6 @@ typedef NS_ENUM(NSInteger, IVLogLevel) { IVDebug,IVInfo,IVWarn,IVError,IVCritica
 - (void)critical:(NSString *)m;
 - (void)installCrashHandler;
 @end
+
+#define IVLog(fmt, ...) [[IVDiagnostics shared] info:[NSString stringWithFormat:(fmt), ##__VA_ARGS__]]
+#define IVErr(fmt, ...) [[IVDiagnostics shared] error:[NSString stringWithFormat:(fmt), ##__VA_ARGS__]]

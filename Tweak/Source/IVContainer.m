@@ -1,5 +1,6 @@
 #import "IVContainer.h"
 #import "IVFakeDevice.h"
+#import "IVPaths.h"
 #import <CoreLocation/CoreLocation.h>
 
 static NSArray<NSString *> *IVRandomColors(void) {
@@ -33,9 +34,7 @@ static NSArray<NSString *> *IVRandomColors(void) {
 }
 
 - (NSString *)sandbox {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *base = [paths.firstObject stringByAppendingPathComponent:@"InstaVault/Containers"];
-    return [base stringByAppendingPathComponent:self.cid];
+    return [IVPaths containerRootForCID:self.cid];
 }
 
 - (NSString *)cookiePath {
@@ -51,6 +50,8 @@ static NSArray<NSString *> *IVRandomColors(void) {
     d[@"locLon"] = @(self.location.longitude);
     d[@"locName"] = self.locName ?: @"";
     d[@"color"] = self.color ?: @"#007AFF";
+    d[@"appLanguage"] = self.appLanguage ?: @"";
+    d[@"regionCountry"] = self.regionCountry ?: @"";
     d[@"active"] = @(self.active);
     d[@"created"] = self.created ?: [NSDate date];
     d[@"lastUsed"] = self.lastUsed ?: [NSDate date];
@@ -66,6 +67,8 @@ static NSArray<NSString *> *IVRandomColors(void) {
         self.location = CLLocationCoordinate2DMake([d[@"locLat"] doubleValue], [d[@"locLon"] doubleValue]);
         self.locName = d[@"locName"];
         self.color = d[@"color"];
+        self.appLanguage = d[@"appLanguage"];
+        self.regionCountry = d[@"regionCountry"];
         self.active = [d[@"active"] boolValue];
         self.created = d[@"created"];
         self.lastUsed = d[@"lastUsed"];
@@ -83,6 +86,8 @@ static NSArray<NSString *> *IVRandomColors(void) {
                                                     [[c decodeObjectOfClass:[NSNumber class] forKey:@"lon"] doubleValue]);
         self.locName = [c decodeObjectOfClass:[NSString class] forKey:@"locName"];
         self.color = [c decodeObjectOfClass:[NSString class] forKey:@"color"];
+        self.appLanguage = [c decodeObjectOfClass:[NSString class] forKey:@"appLanguage"];
+        self.regionCountry = [c decodeObjectOfClass:[NSString class] forKey:@"regionCountry"];
         self.active = [c decodeBoolForKey:@"active"];
         self.created = [c decodeObjectOfClass:[NSDate class] forKey:@"created"];
         self.lastUsed = [c decodeObjectOfClass:[NSDate class] forKey:@"lastUsed"];
@@ -98,6 +103,8 @@ static NSArray<NSString *> *IVRandomColors(void) {
     [c encodeDouble:self.location.longitude forKey:@"lon"];
     [c encodeObject:self.locName forKey:@"locName"];
     [c encodeObject:self.color forKey:@"color"];
+    [c encodeObject:self.appLanguage forKey:@"appLanguage"];
+    [c encodeObject:self.regionCountry forKey:@"regionCountry"];
     [c encodeBool:self.active forKey:@"active"];
     [c encodeObject:self.created forKey:@"created"];
     [c encodeObject:self.lastUsed forKey:@"lastUsed"];

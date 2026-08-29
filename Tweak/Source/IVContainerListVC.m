@@ -5,12 +5,14 @@
 #import "IVFakeDevice.h"
 #import "IVFloatingButton.h"
 #import "IVThemeManager.h"
+#import "IVPaths.h"
 #import <UIKit/UIKit.h>
 
-@interface IVContainerListVC () <UITableViewDelegate, UITableViewDataSource>
+@interface IVContainerListVC () <UITableViewDelegate, UITableViewDataSource, PHPickerViewControllerDelegate>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) UIView *emptyView;
 @property (nonatomic, strong) NSArray *items;
+@property (nonatomic, strong) UIBarButtonItem *cameraBarButton;
 @end
 
 @implementation IVContainerListVC
@@ -21,8 +23,14 @@
     self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     self.navigationController.navigationBar.prefersLargeTitles = YES;
 
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
-                                                                                           target:self action:@selector(add)];
+    self.navigationItem.rightBarButtonItems = @[
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                       target:self action:@selector(add)],
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"video"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self action:@selector(manageGlobalCamera)]
+    ];
+    _cameraBarButton = self.navigationItem.rightBarButtonItems[1];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Done" style:UIBarButtonItemStyleDone
                                                                              target:self action:@selector(dismissSelf)];
 
@@ -60,6 +68,74 @@
 
 - (void)dismissSelf {
     [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)refreshCameraButton {
+    BOOL has = [IVPaths hasGlobalCameraVideo];
+    _cameraBarButton.image = [UIImage systemImageNamed:(has ? @"video.fill" : @"video")];
+    _cameraBarButton.tintColor = has ? [UIColor systemGreenColor] : nil;
+}
+
+- (void)manageGlobalCamera {
+    if (![IVPaths hasGlobalCameraVideo]) { [self pickGlobalCameraVideo]; return; }
+    __weak typeof(self) ws = self;
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Camera virtuelle"
+                                                               message:@"Vidéo de vérification définie ✓ (partagée par tous les conteneurs)"
+                                                        preferredStyle:UIAlertControllerStyleActionSheet];
+    [a addAction:[UIAlertAction actionWithTitle:@"Changer la vidéo" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+        [ws pickGlobalCameraVideo];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Retirer la vidéo" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *_) {
+        [IVPaths removeGlobalCameraVideo];
+        [ws refreshCameraButton];
+        [ws showCameraMessage:@"Caméra virtuelle désactivée" msg:@"Instagram utilisera de nouveau la vraie caméra."];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Annuler" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)pickGlobalCameraVideo {
+    if (@available(iOS 14.0, *)) {
+        PHPickerConfiguration *cfg = [[PHPickerConfiguration alloc] init];
+        cfg.filter = [PHPickerFilter videosFilter];
+        cfg.selectionLimit = 1;
+        PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:cfg];
+        picker.delegate = self;
+        [self presentViewController:picker animated:YES completion:nil];
+    } else {
+        [self showCameraMessage:@"Indisponible" msg:@"La sélection de vidéo nécessite iOS 14 ou plus récent."];
+    }
+}
+
+- (void)showCameraMessage:(NSString *)title msg:(NSString *)msg {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:msg preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)picker:(PHPickerViewController *)picker
+    didFinishPicking:(NSArray<PHPickerResult *> *)results {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    if (results.count == 0) return;
+    NSItemProvider *provider = results.firstObject.itemProvider;
+    if (![provider hasItemConformingToTypeIdentifier:@"public.movie"]) {
+        [self showCameraMessage:@"Format non pris en charge" msg:@"Choisis une vidéo (.mov ou .mp4)."];
+        return;
+    }
+    __weak typeof(self) ws = self;
+    [provider loadFileRepresentationForTypeIdentifier:@"public.movie"
+                                    completionHandler:^(NSURL *url, NSError *error) {
+        BOOL imported = (url != nil) && [IVPaths importGlobalCameraVideoFromURL:url];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!imported) {
+                [ws showCameraMessage:@"Import échoué" msg:@"La vidéo n'a pas pu être copiée. Réessaie."];
+                return;
+            }
+            [ws refreshCameraButton];
+            [ws showCameraMessage:@"Vidéo enregistrée"
+                              msg:@"Elle alimentera la caméra native d'Instagram lors de la vérification, sur tous les conteneurs. Redémarre l'app pour l'activer."];
+        });
+    }];
 }
 
 - (void)add {
